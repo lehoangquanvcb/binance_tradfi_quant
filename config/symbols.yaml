@@ -1,0 +1,38 @@
+# Fallback list. The package first queries Binance Futures /fapi/v1/exchangeInfo.
+# If it cannot identify TradFi symbols, it uses this list.
+tradfi_symbols:
+  - AAPLUSDT
+  - MSFTUSDT
+  - NVDAUSDT
+  - AMZNUSDT
+  - METAUSDT
+  - GOOGLUSDT
+  - TSLAUSDT
+  - SPYUSDT
+  - QQQUSDT
+  - GLDUSDT
+  - SLVUSDT
+  - USOILUSDT
+  - XAUUSDT
+  - SKHYNIXUSDT
+  - SAMSUNGUSDT
+  - HYUNDAIUSDT
+
+# Mapping from Binance TradFi perpetual symbol to Yahoo/FRED proxy ticker for longer history.
+yahoo_mapping:
+  AAPLUSDT: AAPL
+  MSFTUSDT: MSFT
+  NVDAUSDT: NVDA
+  AMZNUSDT: AMZN
+  METAUSDT: META
+  GOOGLUSDT: GOOGL
+  TSLAUSDT: TSLA
+  SPYUSDT: SPY
+  QQQUSDT: QQQ
+  GLDUSDT: GLD
+  SLVUSDT: SLV
+  USOILUSDT: CL=F
+  XAUUSDT: GC=F
+  SKHYNIXUSDT: 000660.KS
+  SAMSUNGUSDT: 005930.KS
+  HYUNDAIUSDT: 005380.KS

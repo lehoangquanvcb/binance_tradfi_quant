@@ -1,0 +1,13 @@
+services:
+  quant-platform:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    ports:
+      - "8501:8501"
+    env_file:
+      - ../.env
+    volumes:
+      - ../data:/app/data
+      - ../outputs:/app/outputs
+      - ../models:/app/models
