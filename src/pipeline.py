@@ -27,6 +27,11 @@ from .institutional_risk import risk_dashboard_table, stress_test, standard_scen
 from .ai_research_assistant import portfolio_brief
 from .model_governance import register_model, validation_check
 from .dynamic_leverage import leverage_multiplier
+from .macro_credit_intelligence import build_macro_credit_dashboard, latest_macro_summary
+from .economic_regime_v55 import classify_economic_regime
+from .cross_asset_intelligence import cross_asset_signals
+from .earnings_intelligence import build_earnings_intelligence
+from .dynamic_asset_allocation_v55 import strategic_allocation
 
 
 def load_cfg():
@@ -129,8 +134,15 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
     macro_cols = [c for c in ds.columns if c.isupper() or c in ['fed_funds','us10y']]
     macro_daily = ds[['date'] + macro_cols].drop_duplicates('date').set_index('date') if macro_cols else pd.DataFrame(index=close_panel.index)
     overlay = credit_macro_score(macro_daily) if not macro_daily.empty else pd.DataFrame({'credit_macro_score':[0.0], 'overlay_regime':['Neutral'], 'equity_risk_budget_multiplier':[0.75]}, index=[close_panel.index[-1]])
-    mult = float(overlay['equity_risk_budget_multiplier'].iloc[-1])
+
+    # V5.5 Macro & Credit Intelligence
+    macro_credit = build_macro_credit_dashboard(macro_daily.reset_index()) if not macro_daily.empty else pd.DataFrame()
+    macro_summary = latest_macro_summary(macro_credit)
+    econ_regime = classify_economic_regime(macro_credit)
+    v55_multiplier = macro_summary.get('equity_budget_multiplier') or float(overlay['equity_risk_budget_multiplier'].iloc[-1])
+    mult = float(v55_multiplier)
     weights_overlay = apply_overlay(weights_rp, mult)
+    strategic_alloc = strategic_allocation(str(macro_summary.get('risk_regime', 'Neutral')))
 
     factors = compute_factor_scores(close_panel)
     exposures = portfolio_factor_exposure(weights_overlay.drop(labels=['CASH'], errors='ignore'), factors)
@@ -138,8 +150,11 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
     stress = stress_test(weights_overlay, standard_scenarios())
     alt = demo_symbol_sentiment(list(close_panel.columns))
     events = macro_event_calendar()
-    latest_regime_v5 = str(overlay['overlay_regime'].iloc[-1])
+    cross_asset = cross_asset_signals(close_panel)
+    earnings = build_earnings_intelligence(list(close_panel.columns))
+    latest_regime_v5 = str(macro_summary.get('risk_regime', overlay['overlay_regime'].iloc[-1]))
     research_note = portfolio_brief(weights_overlay, exposures, regime=latest_regime_v5)
+    research_note += f"\n\nV5.5 Macro-Credit View: regime={macro_summary.get('risk_regime')}, recession probability 6M={macro_summary.get('recession_probability_6m'):.1%}, equity risk score={macro_summary.get('equity_risk_score'):.1f}, credit stress score={macro_summary.get('credit_stress_score'):.1f}."
     gov_rec = register_model('xgb_direction_model', 'v5', 'TradFi direction forecasting and portfolio signal generation', metrics=metrics)
     validation = validation_check({'sharpe':0.0,'max_drawdown':1.0,'hit_rate':metrics.get('accuracy',0.0)})
 
@@ -156,6 +171,11 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
     stress.to_csv(DATA_PROCESSED/'v5_stress_scenarios.csv', index=False)
     alt.to_csv(DATA_PROCESSED/'v5_alternative_sentiment.csv')
     events.to_csv(DATA_PROCESSED/'v5_macro_event_calendar.csv', index=False)
+    macro_credit.to_csv(DATA_PROCESSED/'v55_macro_credit_dashboard.csv', index=False)
+    econ_regime.to_csv(DATA_PROCESSED/'v55_economic_regime.csv', index=False)
+    cross_asset.to_csv(DATA_PROCESSED/'v55_cross_asset_intelligence.csv', index=False)
+    earnings.to_csv(DATA_PROCESSED/'v55_earnings_intelligence.csv', index=False)
+    strategic_alloc.to_csv(DATA_PROCESSED/'v55_dynamic_asset_allocation.csv', index=False)
     (DATA_PROCESSED/'v5_ai_research_note.txt').write_text(research_note, encoding='utf-8')
     pd.DataFrame([gov_rec]).to_csv(DATA_PROCESSED/'v5_model_governance_latest.csv', index=False)
     pd.DataFrame([validation]).to_csv(DATA_PROCESSED/'v5_model_validation.csv', index=False)

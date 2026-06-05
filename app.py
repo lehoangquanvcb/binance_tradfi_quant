@@ -53,12 +53,18 @@ paths = {
     'v5_note': DATA_PROCESSED/'v5_ai_research_note.txt',
     'v5_gov': DATA_PROCESSED/'v5_model_governance_latest.csv',
     'v5_validation': DATA_PROCESSED/'v5_model_validation.csv',
+    'v55_macro_credit': DATA_PROCESSED/'v55_macro_credit_dashboard.csv',
+    'v55_econ_regime': DATA_PROCESSED/'v55_economic_regime.csv',
+    'v55_cross_asset': DATA_PROCESSED/'v55_cross_asset_intelligence.csv',
+    'v55_earnings': DATA_PROCESSED/'v55_earnings_intelligence.csv',
+    'v55_allocation': DATA_PROCESSED/'v55_dynamic_asset_allocation.csv',
 }
 
 tabs = st.tabs([
     '1. Signals','2. Institutional Portfolio','3. Factor Exposure','4. Credit-Macro Overlay',
     '5. Institutional Risk','6. OMS & Approval','7. Execution Quality','8. Paper Trading',
-    '9. Alternative Data','10. AI Research Assistant','11. Model Governance','12. Database & Compliance'
+    '9. Alternative Data','10. AI Research Assistant','11. Model Governance','12. Database & Compliance',
+    '13. V5.5 Macro Credit','14. V5.5 Economic Regime','15. V5.5 Cross Asset','16. V5.5 Earnings','17. V5.5 Asset Allocation'
 ])
 
 with tabs[0]:
@@ -195,3 +201,60 @@ with tabs[11]:
     st.write(str(ROOT/'data'/'quant_platform.sqlite'))
     table = st.selectbox('Table', ['prices','macro','signals','orders','pnl','compliance_log','model_monitoring'])
     st.dataframe(read_table(table).tail(500), use_container_width=True)
+
+
+with tabs[12]:
+    st.subheader('V5.5 Macro & Credit Intelligence')
+    if paths['v55_macro_credit'].exists():
+        mc = pd.read_csv(paths['v55_macro_credit'])
+        latest = mc.sort_values('date').tail(1)
+        c1, c2, c3, c4 = st.columns(4)
+        if not latest.empty:
+            row = latest.iloc[0]
+            c1.metric('Risk regime', str(row.get('risk_regime','N/A')))
+            c2.metric('6M recession probability', f"{float(row.get('recession_probability_6m',0)):.1%}")
+            c3.metric('Equity risk score', f"{float(row.get('equity_risk_score',0)):.1f}/100")
+            c4.metric('Credit stress score', f"{float(row.get('credit_stress_score',0)):.1f}/100")
+        st.dataframe(mc.tail(500), use_container_width=True)
+        if 'equity_risk_score' in mc.columns:
+            st.plotly_chart(px.line(mc.tail(750), x='date', y=['equity_risk_score','credit_stress_score'], title='Macro-Credit Risk Scores'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V5 model first.')
+
+with tabs[13]:
+    st.subheader('V5.5 Economic Regime')
+    if paths['v55_econ_regime'].exists():
+        er = pd.read_csv(paths['v55_econ_regime'])
+        st.dataframe(er.tail(500), use_container_width=True)
+        if 'economic_regime_v55' in er.columns:
+            st.plotly_chart(px.line(er.tail(750), x='date', y='recession_probability_6m', color='economic_regime_v55', title='6M Recession Probability by Regime'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V5 model first.')
+
+with tabs[14]:
+    st.subheader('V5.5 Cross-Asset Intelligence')
+    if paths['v55_cross_asset'].exists():
+        ca = pd.read_csv(paths['v55_cross_asset'])
+        st.dataframe(ca.sort_values('cross_asset_score', ascending=False), use_container_width=True)
+        st.plotly_chart(px.bar(ca.sort_values('cross_asset_score'), x='cross_asset_score', y='symbol', orientation='h', title='Cross-Asset Risk-On/Risk-Off Score'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V5 model first.')
+
+with tabs[15]:
+    st.subheader('V5.5 Earnings Intelligence')
+    if paths['v55_earnings'].exists():
+        ei = pd.read_csv(paths['v55_earnings'])
+        st.dataframe(ei.sort_values('earnings_thesis_score', ascending=False), use_container_width=True)
+        st.plotly_chart(px.bar(ei.sort_values('earnings_thesis_score'), x='earnings_thesis_score', y='symbol', orientation='h', title='Earnings Thesis Score'), use_container_width=True)
+        st.caption('Current version provides a stable schema and deterministic proxy. Connect Finnhub/Polygon/Nasdaq earnings API for production data.')
+    else:
+        st.info('Run / Refresh V5 model first.')
+
+with tabs[16]:
+    st.subheader('V5.5 Dynamic Asset Allocation')
+    if paths['v55_allocation'].exists():
+        aa = pd.read_csv(paths['v55_allocation'])
+        st.dataframe(aa, use_container_width=True)
+        st.plotly_chart(px.pie(aa, names='asset_class', values='target_weight', title='Macro-Credit Strategic Allocation'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V5 model first.')
