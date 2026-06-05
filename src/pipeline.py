@@ -38,6 +38,64 @@ def load_cfg():
     return yaml.safe_load(open(ROOT/'config'/'symbols.yaml', encoding='utf-8'))
 
 
+def _flatten_yfinance_columns(d: pd.DataFrame) -> pd.DataFrame:
+    """Normalize yfinance output across versions/Streamlit Cloud.
+
+    yfinance may return single-level columns or MultiIndex columns such as
+    ('Close', 'AAPL') / ('AAPL', 'Close'). This helper converts them back to
+    Open/High/Low/Close/Volume so downstream feature engineering receives one
+    clean OHLCV table per symbol.
+    """
+    out = d.copy()
+    if isinstance(out.columns, pd.MultiIndex):
+        level0 = [str(x).lower() for x in out.columns.get_level_values(0)]
+        level1 = [str(x).lower() for x in out.columns.get_level_values(1)]
+        price_names = {"open", "high", "low", "close", "adj close", "volume"}
+        if any(x in price_names for x in level0):
+            out.columns = out.columns.get_level_values(0)
+        elif any(x in price_names for x in level1):
+            out.columns = out.columns.get_level_values(1)
+        else:
+            out.columns = ["_".join([str(i) for i in c if str(i) != ""]) for c in out.columns]
+    out = out.loc[:, ~pd.Index(out.columns).duplicated()].copy()
+    return out
+
+
+def _download_yahoo_ohlcv(ticker: str, bsym: str, start: str) -> pd.DataFrame:
+    d = yf.download(
+        ticker,
+        start=start,
+        progress=False,
+        auto_adjust=True,
+        group_by="column",
+        threads=False,
+    )
+    if d.empty:
+        return pd.DataFrame()
+    d = _flatten_yfinance_columns(d)
+    d = d.reset_index()
+    rename_map = {
+        "Date": "date", "Datetime": "date", "Open": "open", "High": "high",
+        "Low": "low", "Close": "close", "Adj Close": "close", "Volume": "volume",
+    }
+    d = d.rename(columns=rename_map)
+    d.columns = [str(c).strip().lower() for c in d.columns]
+    d = d.loc[:, ~d.columns.duplicated()].copy()
+
+    required = ["date", "open", "high", "low", "close", "volume"]
+    missing = [c for c in required if c not in d.columns]
+    if missing:
+        raise ValueError(f"Yahoo {ticker} missing {missing}. Columns={list(d.columns)}")
+
+    d["symbol"] = bsym
+    for c in ["open", "high", "low", "close", "volume"]:
+        d[c] = pd.to_numeric(d[c], errors="coerce")
+    d = d.dropna(subset=["date", "close"])
+    d["quote_volume"] = d["close"] * d["volume"].fillna(0)
+    d["n_trades"] = None
+    return d[["date", "symbol", "open", "high", "low", "close", "volume", "quote_volume", "n_trades"]]
+
+
 def fetch_prices(start='2018-01-01', interval='1d', prefer='yahoo') -> pd.DataFrame:
     cfg = load_cfg()
     fallback = cfg['tradfi_symbols']
@@ -48,6 +106,10 @@ def fetch_prices(start='2018-01-01', interval='1d', prefer='yahoo') -> pd.DataFr
             try:
                 d = fetch_klines(s, interval=interval)
                 if not d.empty:
+                    if isinstance(d.columns, pd.MultiIndex):
+                        d.columns = d.columns.get_level_values(0)
+                    d.columns = [str(c).strip().lower() for c in d.columns]
+                    d = d.loc[:, ~d.columns.duplicated()].copy()
                     frames.append(d)
             except Exception as e:
                 print(f'Binance failed {s}: {e}')
@@ -58,20 +120,21 @@ def fetch_prices(start='2018-01-01', interval='1d', prefer='yahoo') -> pd.DataFr
             if not ticker:
                 continue
             try:
-                d = yf.download(ticker, start=start, progress=False, auto_adjust=True)
-                if d.empty:
-                    continue
-                d = d.reset_index().rename(columns={'Date':'date','Open':'open','High':'high','Low':'low','Close':'close','Volume':'volume'})
-                d['symbol'] = bsym
-                d['quote_volume'] = d['close'] * d['volume']
-                d['n_trades'] = None
-                frames.append(d[['date','symbol','open','high','low','close','volume','quote_volume','n_trades']])
+                d = _download_yahoo_ohlcv(ticker, bsym, start)
+                if not d.empty:
+                    frames.append(d)
             except Exception as e:
                 print(f'Yahoo failed {bsym}/{ticker}: {e}')
     if not frames:
         raise RuntimeError('No price data downloaded. Check internet/API availability.')
     df = pd.concat(frames, ignore_index=True)
-    df['date'] = pd.to_datetime(df['date']).dt.tz_localize(None)
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    df = df.loc[:, ~df.columns.duplicated()].copy()
+    df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.tz_localize(None)
+    for c in ['open','high','low','close','volume','quote_volume']:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+    df = df.dropna(subset=['date','symbol','close']).sort_values(['symbol','date'])
     df.to_parquet(DATA_RAW/'prices.parquet', index=False)
     try:
         replace_dataframe(df, 'prices')
