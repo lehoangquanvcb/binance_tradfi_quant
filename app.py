@@ -13,6 +13,21 @@ from src.oms import OrderTicket, create_order, load_orders, approval_required
 from src.dynamic_leverage import leverage_multiplier
 from src.execution_quality import execution_quality_report
 
+
+def safe_read_csv(path):
+    """Read CSV safely. Return empty DataFrame if file is missing, empty, or malformed."""
+    try:
+        if path is None or (hasattr(path, 'exists') and not path.exists()):
+            return pd.DataFrame()
+        if hasattr(path, 'stat') and path.stat().st_size == 0:
+            return pd.DataFrame()
+        return pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+    except Exception as e:
+        st.warning(f'Could not read {path}: {e}')
+        return pd.DataFrame()
+
 st.set_page_config(page_title='V5 Quant Risk & Investment Intelligence Platform', layout='wide')
 st.title('V5 Quant Risk & Investment Intelligence Platform')
 st.caption('Institutional-grade TradFi quant platform: forecasting, portfolio construction, factor exposure, credit-macro overlay, execution governance, OMS, risk and AI research assistant.')
@@ -205,8 +220,8 @@ with tabs[11]:
 
 with tabs[12]:
     st.subheader('V5.5 Macro & Credit Intelligence')
-    if paths['v55_macro_credit'].exists():
-        mc = pd.read_csv(paths['v55_macro_credit'])
+    mc = safe_read_csv(paths['v55_macro_credit'])
+    if not mc.empty:
         latest = mc.sort_values('date').tail(1)
         c1, c2, c3, c4 = st.columns(4)
         if not latest.empty:
@@ -223,8 +238,8 @@ with tabs[12]:
 
 with tabs[13]:
     st.subheader('V5.5 Economic Regime')
-    if paths['v55_econ_regime'].exists():
-        er = pd.read_csv(paths['v55_econ_regime'])
+    er = safe_read_csv(paths['v55_econ_regime'])
+    if not er.empty:
         st.dataframe(er.tail(500), use_container_width=True)
         if 'economic_regime_v55' in er.columns:
             st.plotly_chart(px.line(er.tail(750), x='date', y='recession_probability_6m', color='economic_regime_v55', title='6M Recession Probability by Regime'), use_container_width=True)
@@ -233,8 +248,8 @@ with tabs[13]:
 
 with tabs[14]:
     st.subheader('V5.5 Cross-Asset Intelligence')
-    if paths['v55_cross_asset'].exists():
-        ca = pd.read_csv(paths['v55_cross_asset'])
+    ca = safe_read_csv(paths['v55_cross_asset'])
+    if not ca.empty:
         st.dataframe(ca.sort_values('cross_asset_score', ascending=False), use_container_width=True)
         st.plotly_chart(px.bar(ca.sort_values('cross_asset_score'), x='cross_asset_score', y='symbol', orientation='h', title='Cross-Asset Risk-On/Risk-Off Score'), use_container_width=True)
     else:
@@ -242,8 +257,8 @@ with tabs[14]:
 
 with tabs[15]:
     st.subheader('V5.5 Earnings Intelligence')
-    if paths['v55_earnings'].exists():
-        ei = pd.read_csv(paths['v55_earnings'])
+    ei = safe_read_csv(paths['v55_earnings'])
+    if not ei.empty:
         st.dataframe(ei.sort_values('earnings_thesis_score', ascending=False), use_container_width=True)
         st.plotly_chart(px.bar(ei.sort_values('earnings_thesis_score'), x='earnings_thesis_score', y='symbol', orientation='h', title='Earnings Thesis Score'), use_container_width=True)
         st.caption('Current version provides a stable schema and deterministic proxy. Connect Finnhub/Polygon/Nasdaq earnings API for production data.')
@@ -252,8 +267,8 @@ with tabs[15]:
 
 with tabs[16]:
     st.subheader('V5.5 Dynamic Asset Allocation')
-    if paths['v55_allocation'].exists():
-        aa = pd.read_csv(paths['v55_allocation'])
+    aa = safe_read_csv(paths['v55_allocation'])
+    if not aa.empty:
         st.dataframe(aa, use_container_width=True)
         st.plotly_chart(px.pie(aa, names='asset_class', values='target_weight', title='Macro-Credit Strategic Allocation'), use_container_width=True)
     else:
