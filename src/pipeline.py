@@ -6,11 +6,7 @@ from .config import ROOT, DATA_RAW, DATA_PROCESSED, MODELS
 from .binance_data import discover_tradfi_symbols, fetch_klines
 from .macro_data import load_macro
 from .features import add_ta_features, merge_macro
-from .model_engine_v6 import train_v6_ensemble, predict_latest_v6, v6_feature_importance
-from .model_diagnostics import flatten_model_metrics, signal_distribution
-from .alpha_quality import compute_alpha_quality
-from .feature_selection import univariate_feature_power
-from .regime_model import attach_regime_bucket
+from .model import train_model, predict_latest
 from .risk import risk_metrics
 from .regime import attach_regime, classify_market_regime
 from .backtest import walk_forward_backtest, summarize_backtest
@@ -103,7 +99,7 @@ def _download_yahoo_ohlcv(ticker: str, bsym: str, start: str) -> pd.DataFrame:
 def fetch_prices(start='2018-01-01', interval='1d', prefer='yahoo') -> pd.DataFrame:
     cfg = load_cfg()
     fallback = cfg['tradfi_symbols']
-    symbols = discover_tradfi_symbols(fallback) if prefer == 'binance' else fallback
+    symbols = discover_tradfi_symbols(fallback)
     frames = []
     if prefer == 'binance':
         for s in symbols:
@@ -158,18 +154,16 @@ def build_dataset(start='2018-01-01', prefer='yahoo'):
             print(f'Database macro write skipped: {e}')
     ds = merge_macro(add_ta_features(prices), macro)
     ds = attach_regime(ds)
-    ds = attach_regime_bucket(ds)
     ds.to_parquet(DATA_PROCESSED/'model_dataset.parquet', index=False)
     return ds
 
 
-def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=False, backtest_mode='fast'):
+def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=False):
     run_id = now_utc().replace(':','').replace('+','_')
-    log_event('RUN', 'START', f'start={start}, prefer={prefer}, nav={nav}, walk_forward={run_walk_forward}, backtest_mode={backtest_mode}')
+    log_event('RUN', 'START', f'start={start}, prefer={prefer}, nav={nav}, walk_forward={run_walk_forward}')
     ds = build_dataset(start=start, prefer=prefer)
-    v6_model_path = MODELS/'model_engine_v6.joblib'
-    metrics = train_v6_ensemble(ds, v6_model_path, max_train_rows=22000)
-    signals = predict_latest_v6(ds, v6_model_path)
+    metrics = train_model(ds, MODELS/'xgb_direction_model.joblib')
+    signals = predict_latest(ds, MODELS/'xgb_direction_model.joblib')
     signals = apply_cost_filter(signals)
     ensemble = build_ensemble_signals(ds, signals)
     risks = risk_metrics(ds)
@@ -187,8 +181,7 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
     portfolio = optimize_portfolio(opt_input, risks, nav=nav)
     kill = evaluate_kill_switch(risks)
     monitoring = monitor_model(ds, metrics, signals, run_id, MODELS/'baseline_features.parquet')
-    xai = v6_feature_importance(v6_model_path)
-    xai.to_csv(DATA_PROCESSED/'feature_explainability.csv', index=False)
+    xai = explain_model(ds, MODELS/'xgb_direction_model.joblib', DATA_PROCESSED/'feature_explainability.csv')
 
     # V5 institutional modules
     close_panel = ds.pivot_table(index='date', columns='symbol', values='close').ffill().dropna(how='all')
@@ -224,21 +217,7 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
     earnings = build_earnings_intelligence(list(close_panel.columns))
     latest_regime_v5 = str(macro_summary.get('risk_regime', overlay['overlay_regime'].iloc[-1]))
     research_note = portfolio_brief(weights_overlay, exposures, regime=latest_regime_v5)
-    recession_prob = float(macro_summary.get('recession_probability_6m') or 0.0)
-    equity_score = float(macro_summary.get('equity_risk_score') or 0.0)
-    credit_score = float(macro_summary.get('credit_stress_score') or 0.0)
-    risk_regime = str(macro_summary.get('risk_regime') or 'Neutral')
-    research_note += (
-        f"\n\nV5.5 Macro-Credit View: "
-        f"regime={risk_regime}, "
-        f"recession probability 6M={recession_prob:.1%}, "
-        f"equity risk score={equity_score:.1f}, "
-        f"credit stress score={credit_score:.1f}."
-    )
-    research_note += (
-        f"\n\nV6.1 Model Engine: ensemble AUC={metrics.get('auc')}, "
-        f"accuracy={metrics.get('accuracy'):.2%}; features={len(metrics.get('features', []))}."
-    )
+    research_note += f"\n\nV5.5 Macro-Credit View: regime={macro_summary.get('risk_regime')}, recession probability 6M={macro_summary.get('recession_probability_6m'):.1%}, equity risk score={macro_summary.get('equity_risk_score'):.1f}, credit stress score={macro_summary.get('credit_stress_score'):.1f}."
     gov_rec = register_model('xgb_direction_model', 'v5', 'TradFi direction forecasting and portfolio signal generation', metrics=metrics)
     validation = validation_check({'sharpe':0.0,'max_drawdown':1.0,'hit_rate':metrics.get('accuracy',0.0)})
 
@@ -263,15 +242,10 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
     (DATA_PROCESSED/'v5_ai_research_note.txt').write_text(research_note, encoding='utf-8')
     pd.DataFrame([gov_rec]).to_csv(DATA_PROCESSED/'v5_model_governance_latest.csv', index=False)
     pd.DataFrame([validation]).to_csv(DATA_PROCESSED/'v5_model_validation.csv', index=False)
-    flatten_model_metrics(metrics).to_csv(DATA_PROCESSED/'v6_model_metrics.csv', index=False)
-    signal_distribution(signals).to_csv(DATA_PROCESSED/'v6_signal_distribution.csv', index=False)
-    compute_alpha_quality(ds, signals).to_csv(DATA_PROCESSED/'v6_alpha_quality.csv', index=False)
-    univariate_feature_power(ds, metrics.get('features', [])).to_csv(DATA_PROCESSED/'v6_feature_power.csv', index=False)
 
     signals['run_id'] = run_id
     signals['strategy'] = 'ml_cost_adjusted'
     signals.to_csv(DATA_PROCESSED/'latest_signals.csv', index=False)
-    signals.to_csv(DATA_PROCESSED/'v6_model_predictions.csv', index=False)
     ensemble.to_csv(DATA_PROCESSED/'ensemble_signals.csv', index=False)
     risks.to_csv(DATA_PROCESSED/'risk_metrics.csv', index=False)
     regimes.to_csv(DATA_PROCESSED/'market_regimes.csv', index=False)
@@ -281,7 +255,7 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
     pd.DataFrame([monitoring]).to_csv(DATA_PROCESSED/'model_monitoring.csv', index=False)
 
     try:
-        replace_dataframe(signals[[c for c in ['run_id','date','symbol','close','prob_up','prob_ensemble','signal','rsi_14','atr_14','ret_20d','strategy'] if c in signals.columns]], 'signals')
+        replace_dataframe(signals[['run_id','date','symbol','close','prob_up','signal','rsi_14','atr_14','ret_20d','strategy']], 'signals')
         upsert_dataframe(pd.DataFrame([{**monitoring, 'ts': now_utc()}]), 'model_monitoring')
     except Exception as e:
         print(f'Database write skipped: {e}')
@@ -291,10 +265,9 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
 
     bt_summary = {}
     if run_walk_forward:
-        bt = walk_forward_backtest(ds, MODELS, mode=backtest_mode, threshold=0.58)
+        bt = walk_forward_backtest(ds, MODELS, train_days=756, test_days=63, threshold=0.60)
         bt.to_csv(DATA_PROCESSED/'walk_forward_backtest.csv', index=False)
         bt_summary = summarize_backtest(bt)
-        bt_summary['backtest_mode'] = backtest_mode
         pd.DataFrame([bt_summary]).to_csv(DATA_PROCESSED/'walk_forward_summary.csv', index=False)
 
     log_event('RUN', 'END', f'metrics={metrics}, kill={kill}, monitoring={monitoring}')
