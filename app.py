@@ -28,8 +28,8 @@ def safe_read_csv(path):
         st.warning(f'Could not read {path}: {e}')
         return pd.DataFrame()
 
-st.set_page_config(page_title='V6 Quant Risk & Investment Intelligence Platform', layout='wide')
-st.title('V6 Quant Risk & Investment Intelligence Platform')
+st.set_page_config(page_title='V6.1 Quant Risk & Investment Intelligence Platform', layout='wide')
+st.title('V6.1 Quant Risk & Investment Intelligence Platform')
 st.caption('Institutional-grade TradFi quant platform with V6 multi-model ensemble, macro-credit intelligence, portfolio construction, risk governance, OMS and AI research assistant.')
 
 with st.sidebar:
@@ -39,11 +39,12 @@ with st.sidebar:
     nav = st.number_input('Portfolio NAV (USD)', min_value=1000.0, value=100000.0, step=1000.0)
     risk_pct = st.slider('Risk per trade', 0.001, 0.03, 0.01, 0.001)
     run_wf = st.checkbox('Run walk-forward backtest', value=False)
+    backtest_mode = st.selectbox('Backtest mode', ['fast','standard','full'], index=0, help='Fast is recommended for Streamlit Cloud; Full can take many minutes.')
     testnet_mode = st.checkbox('Binance testnet / sandbox mode', value=True)
     live_mode = st.checkbox('Live mode enabled', value=False, help='Real orders remain gated by execution.py, OMS, approval and kill-switch controls.')
-    if st.button('Run / Refresh V6 model'):
-        with st.spinner('Running V6 Model Engine pipeline...'):
-            metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(start=start, prefer=prefer, nav=nav, run_walk_forward=run_wf)
+    if st.button('Run / Refresh V6.1 model'):
+        with st.spinner(f'Running V6.1 Model Engine pipeline... Backtest={run_wf}, mode={backtest_mode}'):
+            metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(start=start, prefer=prefer, nav=nav, run_walk_forward=run_wf, backtest_mode=backtest_mode)
             st.success(f'Done. AUC={metrics.get("auc")}, Accuracy={metrics.get("accuracy"):.2%}')
 
 paths = {

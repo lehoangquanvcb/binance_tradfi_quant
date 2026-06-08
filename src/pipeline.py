@@ -163,12 +163,12 @@ def build_dataset(start='2018-01-01', prefer='yahoo'):
     return ds
 
 
-def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=False):
+def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=False, backtest_mode='fast'):
     run_id = now_utc().replace(':','').replace('+','_')
-    log_event('RUN', 'START', f'start={start}, prefer={prefer}, nav={nav}, walk_forward={run_walk_forward}')
+    log_event('RUN', 'START', f'start={start}, prefer={prefer}, nav={nav}, walk_forward={run_walk_forward}, backtest_mode={backtest_mode}')
     ds = build_dataset(start=start, prefer=prefer)
     v6_model_path = MODELS/'model_engine_v6.joblib'
-    metrics = train_v6_ensemble(ds, v6_model_path)
+    metrics = train_v6_ensemble(ds, v6_model_path, max_train_rows=22000)
     signals = predict_latest_v6(ds, v6_model_path)
     signals = apply_cost_filter(signals)
     ensemble = build_ensemble_signals(ds, signals)
@@ -236,7 +236,7 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
         f"credit stress score={credit_score:.1f}."
     )
     research_note += (
-        f"\n\nV6 Model Engine: ensemble AUC={metrics.get('auc')}, "
+        f"\n\nV6.1 Model Engine: ensemble AUC={metrics.get('auc')}, "
         f"accuracy={metrics.get('accuracy'):.2%}; features={len(metrics.get('features', []))}."
     )
     gov_rec = register_model('xgb_direction_model', 'v5', 'TradFi direction forecasting and portfolio signal generation', metrics=metrics)
@@ -291,9 +291,10 @@ def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=F
 
     bt_summary = {}
     if run_walk_forward:
-        bt = walk_forward_backtest(ds, MODELS, train_days=756, test_days=126, threshold=0.58, max_windows=4)
+        bt = walk_forward_backtest(ds, MODELS, mode=backtest_mode, threshold=0.58)
         bt.to_csv(DATA_PROCESSED/'walk_forward_backtest.csv', index=False)
         bt_summary = summarize_backtest(bt)
+        bt_summary['backtest_mode'] = backtest_mode
         pd.DataFrame([bt_summary]).to_csv(DATA_PROCESSED/'walk_forward_summary.csv', index=False)
 
     log_event('RUN', 'END', f'metrics={metrics}, kill={kill}, monitoring={monitoring}')
