@@ -1,38 +1,80 @@
-# Fallback list. The package first queries Binance Futures /fapi/v1/exchangeInfo.
-# If it cannot identify TradFi symbols, it uses this list.
+# Canonical V5.5 watchlist.  The platform now uses this config list as the
+# primary universe and downloads long price history from Yahoo Finance.
+# Binance discovery is optional and no longer allowed to replace this watchlist
+# with only one discovered symbol.
 tradfi_symbols:
-  - AAPLUSDT
-  - MSFTUSDT
-  - NVDAUSDT
-  - AMZNUSDT
-  - METAUSDT
-  - GOOGLUSDT
-  - TSLAUSDT
-  - SPYUSDT
-  - QQQUSDT
-  - GLDUSDT
-  - SLVUSDT
-  - USOILUSDT
-  - XAUUSDT
-  - SKHYNIXUSDT
-  - SAMSUNGUSDT
-  - HYUNDAIUSDT
+  - AAPL
+  - NVDA
+  - MSFT
+  - META
+  - AMZN
+  - GOOGL
+  - TSLA
+  - VFS
+  - NFLX
+  - AMD
+  - AVGO
+  - INTC
+  - JPM
+  - BAC
+  - GS
+  - XOM
+  - CVX
+  - UNH
+  - JNJ
+  - WMT
+  - COST
+  - SPY
+  - QQQ
+  - DIA
+  - IWM
+  - XLK
+  - XLF
+  - XLE
+  - TLT
+  - IEF
+  - SHY
+  - GLD
+  - SLV
+  - USO
+  - BTC
+  - ETH
 
-# Mapping from Binance TradFi perpetual symbol to Yahoo/FRED proxy ticker for longer history.
+# Mapping from internal platform symbol to Yahoo ticker.
 yahoo_mapping:
-  AAPLUSDT: AAPL
-  MSFTUSDT: MSFT
-  NVDAUSDT: NVDA
-  AMZNUSDT: AMZN
-  METAUSDT: META
-  GOOGLUSDT: GOOGL
-  TSLAUSDT: TSLA
-  SPYUSDT: SPY
-  QQQUSDT: QQQ
-  GLDUSDT: GLD
-  SLVUSDT: SLV
-  USOILUSDT: CL=F
-  XAUUSDT: GC=F
-  SKHYNIXUSDT: 000660.KS
-  SAMSUNGUSDT: 005930.KS
-  HYUNDAIUSDT: 005380.KS
+  AAPL: AAPL
+  NVDA: NVDA
+  MSFT: MSFT
+  META: META
+  AMZN: AMZN
+  GOOGL: GOOGL
+  TSLA: TSLA
+  VFS: VFS
+  NFLX: NFLX
+  AMD: AMD
+  AVGO: AVGO
+  INTC: INTC
+  JPM: JPM
+  BAC: BAC
+  GS: GS
+  XOM: XOM
+  CVX: CVX
+  UNH: UNH
+  JNJ: JNJ
+  WMT: WMT
+  COST: COST
+  SPY: SPY
+  QQQ: QQQ
+  DIA: DIA
+  IWM: IWM
+  XLK: XLK
+  XLF: XLF
+  XLE: XLE
+  TLT: TLT
+  IEF: IEF
+  SHY: SHY
+  GLD: GLD
+  SLV: SLV
+  USO: USO
+  BTC: BTC-USD
+  ETH: ETH-USD
