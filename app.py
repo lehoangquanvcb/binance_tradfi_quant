@@ -28,9 +28,9 @@ def safe_read_csv(path):
         st.warning(f'Could not read {path}: {e}')
         return pd.DataFrame()
 
-st.set_page_config(page_title='V5 Quant Risk & Investment Intelligence Platform', layout='wide')
-st.title('V5 Quant Risk & Investment Intelligence Platform')
-st.caption('Institutional-grade TradFi quant platform: forecasting, portfolio construction, factor exposure, credit-macro overlay, execution governance, OMS, risk and AI research assistant.')
+st.set_page_config(page_title='V6 Quant Risk & Investment Intelligence Platform', layout='wide')
+st.title('V6 Quant Risk & Investment Intelligence Platform')
+st.caption('Institutional-grade TradFi quant platform with V6 multi-model ensemble, macro-credit intelligence, portfolio construction, risk governance, OMS and AI research assistant.')
 
 with st.sidebar:
     st.header('Controls')
@@ -41,8 +41,8 @@ with st.sidebar:
     run_wf = st.checkbox('Run walk-forward backtest', value=False)
     testnet_mode = st.checkbox('Binance testnet / sandbox mode', value=True)
     live_mode = st.checkbox('Live mode enabled', value=False, help='Real orders remain gated by execution.py, OMS, approval and kill-switch controls.')
-    if st.button('Run / Refresh V5 model'):
-        with st.spinner('Running V5 institutional pipeline...'):
+    if st.button('Run / Refresh V6 model'):
+        with st.spinner('Running V6 Model Engine pipeline...'):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(start=start, prefer=prefer, nav=nav, run_walk_forward=run_wf)
             st.success(f'Done. AUC={metrics.get("auc")}, Accuracy={metrics.get("accuracy"):.2%}')
 
@@ -73,13 +73,20 @@ paths = {
     'v55_cross_asset': DATA_PROCESSED/'v55_cross_asset_intelligence.csv',
     'v55_earnings': DATA_PROCESSED/'v55_earnings_intelligence.csv',
     'v55_allocation': DATA_PROCESSED/'v55_dynamic_asset_allocation.csv',
+    'v6_metrics': DATA_PROCESSED/'v6_model_metrics.csv',
+    'v6_predictions': DATA_PROCESSED/'v6_model_predictions.csv',
+    'v6_feature_power': DATA_PROCESSED/'v6_feature_power.csv',
+    'v6_alpha_quality': DATA_PROCESSED/'v6_alpha_quality.csv',
+    'v6_signal_distribution': DATA_PROCESSED/'v6_signal_distribution.csv',
 }
+
 
 tabs = st.tabs([
     '1. Signals','2. Institutional Portfolio','3. Factor Exposure','4. Credit-Macro Overlay',
     '5. Institutional Risk','6. OMS & Approval','7. Execution Quality','8. Paper Trading',
     '9. Alternative Data','10. AI Research Assistant','11. Model Governance','12. Database & Compliance',
-    '13. V5.5 Macro Credit','14. V5.5 Economic Regime','15. V5.5 Cross Asset','16. V5.5 Earnings','17. V5.5 Asset Allocation'
+    '13. V5.5 Macro Credit','14. V5.5 Economic Regime','15. V5.5 Cross Asset','16. V5.5 Earnings','17. V5.5 Asset Allocation',
+    '18. V6 Model Engine','19. V6 Feature Power','20. V6 Alpha Quality','21. V6 Signal Distribution'
 ])
 
 with tabs[0]:
@@ -273,3 +280,50 @@ with tabs[16]:
         st.plotly_chart(px.pie(aa, names='asset_class', values='target_weight', title='Macro-Credit Strategic Allocation'), use_container_width=True)
     else:
         st.info('Run / Refresh V5 model first.')
+
+
+# ---------------- V6 Model Engine Tabs ----------------
+with tabs[17]:
+    st.subheader('V6 Model Engine Diagnostics')
+    m = safe_read_csv(paths.get('v6_metrics'))
+    p = safe_read_csv(paths.get('v6_predictions'))
+    if not m.empty:
+        st.dataframe(m, use_container_width=True)
+        auc_cols = [c for c in ['auc','accuracy','precision','recall'] if c in m.columns]
+        if auc_cols and 'model' in m.columns:
+            melted = m.melt(id_vars='model', value_vars=auc_cols, var_name='metric', value_name='value')
+            st.plotly_chart(px.bar(melted, x='model', y='value', color='metric', barmode='group', title='V6 Model Comparison'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V6 model first.')
+    if not p.empty:
+        st.subheader('Latest V6 Predictions')
+        show = [c for c in ['date','symbol','close','prob_xgb','prob_lgbm','prob_rf','prob_logit','prob_ensemble','prob_up','signal'] if c in p.columns]
+        st.dataframe(p[show].sort_values('prob_up', ascending=False), use_container_width=True)
+
+with tabs[18]:
+    st.subheader('V6 Feature Power')
+    fp = safe_read_csv(paths.get('v6_feature_power'))
+    if not fp.empty:
+        st.dataframe(fp, use_container_width=True)
+        if 'spearman_ic' in fp.columns:
+            st.plotly_chart(px.bar(fp.head(25).sort_values('spearman_ic'), x='spearman_ic', y='feature', orientation='h', title='Feature Predictive Power'), use_container_width=True)
+    else:
+        st.info('No V6 feature power file yet.')
+
+with tabs[19]:
+    st.subheader('V6 Alpha Quality')
+    aq = safe_read_csv(paths.get('v6_alpha_quality'))
+    if not aq.empty:
+        st.dataframe(aq, use_container_width=True)
+    else:
+        st.info('No V6 alpha quality file yet.')
+
+with tabs[20]:
+    st.subheader('V6 Signal Distribution')
+    sd = safe_read_csv(paths.get('v6_signal_distribution'))
+    if not sd.empty:
+        st.dataframe(sd, use_container_width=True)
+        if {'signal','count'}.issubset(sd.columns):
+            st.plotly_chart(px.pie(sd, names='signal', values='count', title='Signal Distribution'), use_container_width=True)
+    else:
+        st.info('No V6 signal distribution file yet.')
