@@ -224,7 +224,17 @@ def run_all(
     earnings = build_earnings_intelligence(list(close_panel.columns))
     latest_regime_v5 = str(macro_summary.get('risk_regime', overlay['overlay_regime'].iloc[-1]))
     research_note = portfolio_brief(weights_overlay, exposures, regime=latest_regime_v5)
-    research_note += f"\n\nV5.5 Macro-Credit View: regime={macro_summary.get('risk_regime')}, recession probability 6M={macro_summary.get('recession_probability_6m'):.1%}, equity risk score={macro_summary.get('equity_risk_score'):.1f}, credit stress score={macro_summary.get('credit_stress_score'):.1f}."
+    recession_prob = float(macro_summary.get("recession_probability_6m") or 0.0)
+    equity_score = float(macro_summary.get("equity_risk_score") or 0.0)
+    credit_score = float(macro_summary.get("credit_stress_score") or 0.0)
+    risk_regime = str(macro_summary.get("risk_regime") or "Neutral")
+    research_note += (
+        f"\n\nV5.5 Macro-Credit View: "
+        f"regime={risk_regime}, "
+        f"recession probability 6M={recession_prob:.1%}, "
+        f"equity risk score={equity_score:.1f}, "
+        f"credit stress score={credit_score:.1f}."
+    )
     gov_rec = register_model('xgb_direction_model', 'v5', 'TradFi direction forecasting and portfolio signal generation', metrics=metrics)
     validation = validation_check({'sharpe':0.0,'max_drawdown':1.0,'hit_rate':metrics.get('accuracy',0.0)})
 
