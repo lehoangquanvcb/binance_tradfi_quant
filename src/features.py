@@ -88,7 +88,11 @@ def add_ta_features(df: pd.DataFrame) -> pd.DataFrame:
             print(f"Relative strength features skipped: {e}")
 
     # Target
-    df["target_up_1d"] = (g["close"].shift(-1) > df["close"]).astype(int)
+    next_close = df.groupby("symbol")["close"].shift(-1)
+
+    df["target_up_1d"] = (
+        next_close.reset_index(drop=True) > df["close"].reset_index(drop=True)
+    ).astype(int)
 
     return df.replace([np.inf, -np.inf], np.nan)
 
