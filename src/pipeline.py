@@ -158,7 +158,14 @@ def build_dataset(start='2018-01-01', prefer='yahoo'):
     return ds
 
 
-def run_all(start='2018-01-01', prefer='yahoo', nav=100000.0, run_walk_forward=False):
+def run_all(
+    start='2018-01-01',
+    prefer='yahoo',
+    nav=100000.0,
+    run_walk_forward=False,
+    backtest_mode='fast',
+    **kwargs
+):
     run_id = now_utc().replace(':','').replace('+','_')
     log_event('RUN', 'START', f'start={start}, prefer={prefer}, nav={nav}, walk_forward={run_walk_forward}')
     ds = build_dataset(start=start, prefer=prefer)
