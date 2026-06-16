@@ -32,6 +32,10 @@ from .economic_regime_v55 import classify_economic_regime
 from .cross_asset_intelligence import cross_asset_signals
 from .earnings_intelligence import build_earnings_intelligence
 from .dynamic_asset_allocation_v55 import strategic_allocation
+from .market_timing import build_market_timing
+from .sector_rotation import build_sector_rotation
+from .stock_ranking import build_stock_ranking
+from .exit_engine import build_exit_watchlist
 
 
 def load_cfg():
@@ -201,7 +205,13 @@ def run_all(
         weights_rp = pd.Series(1.0, index=returns_panel.columns)
         weights_mvo = weights_rp.copy(); weights_hrp = weights_rp.copy()
 
-    macro_cols = [c for c in ds.columns if c.isupper() or c in ['fed_funds','us10y']]
+    macro_candidates = {
+        'fed_funds_rate','fed_funds','FEDFUNDS','us_10y_yield','us_2y_yield','US10Y','US2Y','DGS10','DGS2',
+        'cpi_index','cpi_yoy','CPI_YOY','CPIAUCSL','unemployment_rate','UNRATE','high_yield_spread','HY_SPREAD',
+        'investment_grade_spread','IG_SPREAD','BAMLH0A0HYM2','BAMLC0A0CM','vix','VIXCLS','dxy','DTWEXBGS',
+        'sp500','nasdaq'
+    }
+    macro_cols = [c for c in ds.columns if c in macro_candidates or c.isupper()]
     macro_daily = ds[['date'] + macro_cols].drop_duplicates('date').set_index('date') if macro_cols else pd.DataFrame(index=close_panel.index)
     overlay = credit_macro_score(macro_daily) if not macro_daily.empty else pd.DataFrame({'credit_macro_score':[0.0], 'overlay_regime':['Neutral'], 'equity_risk_budget_multiplier':[0.75]}, index=[close_panel.index[-1]])
 
@@ -222,6 +232,13 @@ def run_all(
     events = macro_event_calendar()
     cross_asset = cross_asset_signals(close_panel)
     earnings = build_earnings_intelligence(list(close_panel.columns))
+
+    # V6.2 Market Intelligence: market timing -> sector rotation -> stock ranking -> exit watchlist
+    market_timing = build_market_timing(close_panel, macro_credit)
+    sector_rotation = build_sector_rotation(close_panel)
+    stock_ranking = build_stock_ranking(ensemble if not ensemble.empty else signals, close_panel, sector_rotation, market_timing)
+    exit_watchlist = build_exit_watchlist(stock_ranking, close_panel, market_timing, sector_rotation)
+
     latest_regime_v5 = str(macro_summary.get('risk_regime', overlay['overlay_regime'].iloc[-1]))
     research_note = portfolio_brief(weights_overlay, exposures, regime=latest_regime_v5)
     recession_prob = float(macro_summary.get("recession_probability_6m") or 0.0)
@@ -256,6 +273,10 @@ def run_all(
     cross_asset.to_csv(DATA_PROCESSED/'v55_cross_asset_intelligence.csv', index=False)
     earnings.to_csv(DATA_PROCESSED/'v55_earnings_intelligence.csv', index=False)
     strategic_alloc.to_csv(DATA_PROCESSED/'v55_dynamic_asset_allocation.csv', index=False)
+    market_timing.to_csv(DATA_PROCESSED/'v62_market_timing.csv', index=False)
+    sector_rotation.to_csv(DATA_PROCESSED/'v62_sector_rotation.csv', index=False)
+    stock_ranking.to_csv(DATA_PROCESSED/'v62_stock_ranking.csv', index=False)
+    exit_watchlist.to_csv(DATA_PROCESSED/'v62_exit_watchlist.csv', index=False)
     (DATA_PROCESSED/'v5_ai_research_note.txt').write_text(research_note, encoding='utf-8')
     pd.DataFrame([gov_rec]).to_csv(DATA_PROCESSED/'v5_model_governance_latest.csv', index=False)
     pd.DataFrame([validation]).to_csv(DATA_PROCESSED/'v5_model_validation.csv', index=False)
@@ -282,7 +303,10 @@ def run_all(
 
     bt_summary = {}
     if run_walk_forward:
-        bt = walk_forward_backtest(ds, MODELS, train_days=756, test_days=63, threshold=0.60)
+        try:
+            bt = walk_forward_backtest(ds, MODELS, train_days=756, test_days=63, threshold=0.60, mode=backtest_mode)
+        except TypeError:
+            bt = walk_forward_backtest(ds, MODELS, train_days=756, test_days=63, threshold=0.60)
         bt.to_csv(DATA_PROCESSED/'walk_forward_backtest.csv', index=False)
         bt_summary = summarize_backtest(bt)
         pd.DataFrame([bt_summary]).to_csv(DATA_PROCESSED/'walk_forward_summary.csv', index=False)

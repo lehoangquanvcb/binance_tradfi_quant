@@ -28,8 +28,8 @@ def safe_read_csv(path):
         st.warning(f'Could not read {path}: {e}')
         return pd.DataFrame()
 
-st.set_page_config(page_title='V6.1 Quant Risk & Investment Intelligence Platform', layout='wide')
-st.title('V6.1 Quant Risk & Investment Intelligence Platform')
+st.set_page_config(page_title='V6.2 Market Intelligence Platform', layout='wide')
+st.title('V6.2 Market Intelligence Platform')
 st.caption('Institutional-grade TradFi quant platform with V6 multi-model ensemble, macro-credit intelligence, portfolio construction, risk governance, OMS and AI research assistant.')
 
 with st.sidebar:
@@ -42,8 +42,8 @@ with st.sidebar:
     backtest_mode = st.selectbox('Backtest mode', ['fast','standard','full'], index=0, help='Fast is recommended for Streamlit Cloud; Full can take many minutes.')
     testnet_mode = st.checkbox('Binance testnet / sandbox mode', value=True)
     live_mode = st.checkbox('Live mode enabled', value=False, help='Real orders remain gated by execution.py, OMS, approval and kill-switch controls.')
-    if st.button('Run / Refresh V6.1 model'):
-        with st.spinner(f'Running V6.1 Model Engine pipeline... Backtest={run_wf}, mode={backtest_mode}'):
+    if st.button('Run / Refresh V6.2 model'):
+        with st.spinner(f'Running V6.2 Market Intelligence pipeline... Backtest={run_wf}, mode={backtest_mode}'):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(start=start, prefer=prefer, nav=nav, run_walk_forward=run_wf, backtest_mode=backtest_mode)
             st.success(f'Done. AUC={metrics.get("auc")}, Accuracy={metrics.get("accuracy"):.2%}')
 
@@ -79,6 +79,10 @@ paths = {
     'v6_feature_power': DATA_PROCESSED/'v6_feature_power.csv',
     'v6_alpha_quality': DATA_PROCESSED/'v6_alpha_quality.csv',
     'v6_signal_distribution': DATA_PROCESSED/'v6_signal_distribution.csv',
+    'v62_market_timing': DATA_PROCESSED/'v62_market_timing.csv',
+    'v62_sector_rotation': DATA_PROCESSED/'v62_sector_rotation.csv',
+    'v62_stock_ranking': DATA_PROCESSED/'v62_stock_ranking.csv',
+    'v62_exit_watchlist': DATA_PROCESSED/'v62_exit_watchlist.csv',
 }
 
 
@@ -87,7 +91,8 @@ tabs = st.tabs([
     '5. Institutional Risk','6. OMS & Approval','7. Execution Quality','8. Paper Trading',
     '9. Alternative Data','10. AI Research Assistant','11. Model Governance','12. Database & Compliance',
     '13. V5.5 Macro Credit','14. V5.5 Economic Regime','15. V5.5 Cross Asset','16. V5.5 Earnings','17. V5.5 Asset Allocation',
-    '18. V6 Model Engine','19. V6 Feature Power','20. V6 Alpha Quality','21. V6 Signal Distribution'
+    '18. V6 Model Engine','19. V6 Feature Power','20. V6 Alpha Quality','21. V6 Signal Distribution',
+    '22. Market Timing','23. Sector Rotation','24. Stock Ranking','25. Exit Watchlist'
 ])
 
 with tabs[0]:
@@ -328,3 +333,56 @@ with tabs[20]:
             st.plotly_chart(px.pie(sd, names='signal', values='count', title='Signal Distribution'), use_container_width=True)
     else:
         st.info('No V6 signal distribution file yet.')
+
+
+# ---------------- V6.2 Market Intelligence Tabs ----------------
+with tabs[21]:
+    st.subheader('V6.2 Market Timing')
+    mt = safe_read_csv(paths.get('v62_market_timing'))
+    if not mt.empty:
+        latest = mt.sort_values('date').tail(1)
+        if not latest.empty:
+            row = latest.iloc[0]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric('Market Timing Score', f"{float(row.get('market_timing_score', 0)):.1f}/100")
+            c2.metric('Regime', str(row.get('timing_regime', 'N/A')))
+            c3.metric('Suggested Equity', f"{float(row.get('suggested_equity_allocation', 0)):.0%}")
+            c4.metric('Suggested Cash', f"{float(row.get('suggested_cash_allocation', 0)):.0%}")
+        st.dataframe(mt.tail(500), use_container_width=True)
+        ycols = [c for c in ['market_timing_score','trend_score','momentum_score','breadth_score','credit_macro_score'] if c in mt.columns]
+        if ycols:
+            st.plotly_chart(px.line(mt.tail(750), x='date', y=ycols, title='Market Timing Components'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V6.2 model first.')
+
+with tabs[22]:
+    st.subheader('V6.2 Sector Rotation')
+    sr = safe_read_csv(paths.get('v62_sector_rotation'))
+    if not sr.empty:
+        st.dataframe(sr, use_container_width=True)
+        if 'sector_score' in sr.columns:
+            st.plotly_chart(px.bar(sr.sort_values('sector_score'), x='sector_score', y='sector', color='recommendation', orientation='h', title='Sector Rotation Score'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V6.2 model first.')
+
+with tabs[23]:
+    st.subheader('V6.2 Stock Ranking')
+    rk = safe_read_csv(paths.get('v62_stock_ranking'))
+    if not rk.empty:
+        action_filter = st.multiselect('Action filter', sorted(rk['action'].dropna().unique().tolist()) if 'action' in rk.columns else [], default=sorted(rk['action'].dropna().unique().tolist()) if 'action' in rk.columns else [])
+        show = rk[rk['action'].isin(action_filter)] if action_filter and 'action' in rk.columns else rk
+        st.dataframe(show.sort_values('stock_score', ascending=False), use_container_width=True)
+        if 'stock_score' in show.columns:
+            st.plotly_chart(px.bar(show.head(25).sort_values('stock_score'), x='stock_score', y='symbol', color='action', orientation='h', title='Top Stock Candidates'), use_container_width=True)
+    else:
+        st.info('Run / Refresh V6.2 model first.')
+
+with tabs[24]:
+    st.subheader('V6.2 Exit Watchlist')
+    ex = safe_read_csv(paths.get('v62_exit_watchlist'))
+    if not ex.empty:
+        st.dataframe(ex, use_container_width=True)
+        if 'severity' in ex.columns:
+            st.plotly_chart(px.histogram(ex, x='severity', color='action', title='Exit Watchlist by Severity'), use_container_width=True)
+    else:
+        st.success('No exit candidates under current rules.')
