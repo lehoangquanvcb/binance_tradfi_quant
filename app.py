@@ -1,4 +1,3 @@
-import json
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -6,9 +5,6 @@ import plotly.express as px
 from src.config import DATA_PROCESSED
 from src.pipeline import run_all
 from src.kill_switch import evaluate_kill_switch
-from src.database import log_event
-from src.oms import OrderTicket, create_order, load_orders, approval_required
-from src.dynamic_leverage import leverage_multiplier
 
 
 def safe_read_csv(path):
@@ -32,9 +28,19 @@ def safe_read_text(path):
     return ""
 
 
+def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
+    if df is None or df.empty:
+        st.info(empty_msg)
+    else:
+        st.dataframe(df, use_container_width=True)
+
+
 st.set_page_config(page_title="V8 CIO Market Intelligence Platform", layout="wide")
 st.title("V8 CIO Market Intelligence Platform")
-st.caption("Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation, with risk governance and model monitoring.")
+st.caption(
+    "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
+    "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
+)
 
 with st.sidebar:
     st.header("Controls")
@@ -45,7 +51,7 @@ with st.sidebar:
     run_wf = st.checkbox("Run walk-forward backtest", value=False)
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
-    live_mode = st.checkbox("Live mode enabled", value=False, help="Live orders remain gated by OMS, approval and kill-switch controls.")
+    live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
     if st.button("Run / Refresh V8 model"):
         with st.spinner(f"Running V8 CIO pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
@@ -91,13 +97,11 @@ tabs = st.tabs([
     "4. Stock Selection",
     "5. Exit Watchlist",
     "6. Signals",
-    "7. Portfolio Construction",
-    "8. Factor Exposure",
-    "9. Credit-Macro",
-    "10. Institutional Risk",
-    "11. OMS Approval",
-    "12. AI Research",
-    "13. Model Governance",
+    "7. Portfolio",
+    "8. Credit-Macro",
+    "9. Institutional Risk",
+    "10. AI Research",
+    "11. Model Governance",
 ])
 
 with tabs[0]:
@@ -108,28 +112,34 @@ with tabs[0]:
     stock = safe_read_csv(paths["v8_stock"])
     exits = safe_read_csv(paths["v8_exit"])
     port = safe_read_csv(paths["v8_portfolio"])
+
     if summary:
         st.info(summary)
+
     if not regime.empty:
         latest = regime.sort_values("date").tail(1).iloc[0]
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Market Regime", str(latest.get("market_regime", "N/A")))
-        c2.metric("Regime Score", f"{float(latest.get('regime_score', 0)):.1f}")
+        c2.metric("Regime Score", f"{float(latest.get('regime_score', 0)):.1f}/100")
         c3.metric("Equity Weight", f"{float(latest.get('recommended_equity_weight', 0)):.0%}")
         c4.metric("Cash Weight", f"{float(latest.get('recommended_cash_weight', 0)):.0%}")
+    else:
+        st.info("Run V8 model to populate CIO dashboard.")
+
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Top Sectors")
         if not sector.empty:
-            st.dataframe(sector.head(5), use_container_width=True)
+            cols = [c for c in ["rank", "symbol", "sector", "sector_score", "sector_action", "relative_strength_60d", "trend_strength"] if c in sector.columns]
+            st.dataframe(sector[cols].head(8), use_container_width=True)
         st.subheader("Top Stock Ideas")
         if not stock.empty:
-            cols = [c for c in ["rank", "symbol", "stock_score", "decision", "sector_bucket", "market_regime"] if c in stock.columns]
-            st.dataframe(stock[cols].head(10), use_container_width=True)
+            cols = [c for c in ["rank", "symbol", "stock_score", "decision", "sector_bucket", "sector_action", "market_regime"] if c in stock.columns]
+            st.dataframe(stock[cols].head(12), use_container_width=True)
     with c2:
         st.subheader("Exit / Reduce Watchlist")
         if not exits.empty:
-            st.dataframe(exits.head(10), use_container_width=True)
+            st.dataframe(exits.head(12), use_container_width=True)
         else:
             st.success("No major exit candidates generated.")
         st.subheader("Recommended Portfolio")
@@ -139,12 +149,9 @@ with tabs[0]:
 with tabs[1]:
     st.header("Market Regime Engine")
     regime = safe_read_csv(paths["v8_regime"])
-    if regime.empty:
-        st.info("Run V8 model first.")
-    else:
-        st.dataframe(regime.tail(20), use_container_width=True)
-        if "regime_score" in regime.columns:
-            st.plotly_chart(px.line(regime.tail(750), x="date", y="regime_score", color="market_regime", title="Market Regime Score"), use_container_width=True)
+    show_df(regime.tail(20) if not regime.empty else regime)
+    if not regime.empty and "regime_score" in regime.columns:
+        st.plotly_chart(px.line(regime.tail(750), x="date", y="regime_score", color="market_regime", title="Market Regime Score"), use_container_width=True)
         alloc_cols = [c for c in ["recommended_equity_weight", "recommended_bond_weight", "recommended_gold_weight", "recommended_cash_weight"] if c in regime.columns]
         if alloc_cols:
             st.plotly_chart(px.area(regime.tail(750), x="date", y=alloc_cols, title="Recommended Risk Budget"), use_container_width=True)
@@ -152,11 +159,9 @@ with tabs[1]:
 with tabs[2]:
     st.header("Sector Rotation")
     sector = safe_read_csv(paths["v8_sector"])
-    if sector.empty:
-        st.info("Run V8 model first.")
-    else:
-        st.dataframe(sector, use_container_width=True)
-        st.plotly_chart(px.bar(sector.sort_values("sector_score"), x="sector_score", y="sector", color="sector_action", orientation="h", title="Sector Rotation Score"), use_container_width=True)
+    show_df(sector)
+    if not sector.empty and {"sector_score", "sector"}.issubset(sector.columns):
+        st.plotly_chart(px.bar(sector.sort_values("sector_score"), x="sector_score", y="sector", color="sector_action" if "sector_action" in sector.columns else None, orientation="h", title="Sector Rotation Score"), use_container_width=True)
 
 with tabs[3]:
     st.header("Stock Selection")
@@ -175,7 +180,8 @@ with tabs[4]:
         st.success("No major exit/reduce candidates generated.")
     else:
         st.dataframe(exits, use_container_width=True)
-        st.plotly_chart(px.bar(exits.sort_values("stock_score"), x="stock_score", y="symbol", color="severity", orientation="h", title="Exit Watchlist"), use_container_width=True)
+        if "stock_score" in exits.columns:
+            st.plotly_chart(px.bar(exits.sort_values("stock_score"), x="stock_score", y="symbol", color="severity" if "severity" in exits.columns else None, orientation="h", title="Exit Watchlist"), use_container_width=True)
 
 with tabs[5]:
     st.header("Signals")
@@ -191,54 +197,39 @@ with tabs[5]:
         st.plotly_chart(px.bar(sig.sort_values(score_col), x=score_col, y="symbol", orientation="h", title="Signal Score"), use_container_width=True)
 
 with tabs[6]:
-    st.header("Portfolio Construction")
+    st.header("Portfolio Recommendation")
     port = safe_read_csv(paths["v8_portfolio"])
-    old = safe_read_csv(paths["v5_weights"])
+    legacy = safe_read_csv(paths["v5_weights"])
     if not port.empty:
         st.subheader("V8 CIO Recommended Portfolio")
         st.dataframe(port, use_container_width=True)
-        st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="V8 Target Weights"), use_container_width=True)
-    elif not old.empty:
+        if {"symbol", "target_weight"}.issubset(port.columns):
+            st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="V8 Target Weights"), use_container_width=True)
+    elif not legacy.empty:
         st.subheader("Legacy Portfolio Construction")
-        st.dataframe(old, use_container_width=True)
+        st.dataframe(legacy, use_container_width=True)
     else:
         st.info("Run V8 model first.")
 
 with tabs[7]:
-    st.header("Factor Exposure")
-    factors = safe_read_csv(paths["v5_factors"])
-    expo = safe_read_csv(paths["v5_exposure"])
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Symbol Factor Scores")
-        if not factors.empty:
-            st.dataframe(factors, use_container_width=True)
-    with c2:
-        st.subheader("Portfolio Factor Exposure")
-        if not expo.empty:
-            st.dataframe(expo, use_container_width=True)
-            if "exposure" in expo.columns:
-                st.plotly_chart(px.bar(expo, x=expo.columns[0], y="exposure", title="Factor Exposure"), use_container_width=True)
-
-with tabs[8]:
     st.header("Credit-Macro")
-    overlay = safe_read_csv(paths["v5_overlay"])
     macro_credit = safe_read_csv(paths["v55_macro_credit"])
+    overlay = safe_read_csv(paths["v5_overlay"])
     if not macro_credit.empty:
         st.subheader("Macro-Credit Intelligence")
         st.dataframe(macro_credit.tail(250), use_container_width=True)
         y = [c for c in ["recession_probability_6m", "equity_risk_score", "credit_stress_score", "macro_credit_composite"] if c in macro_credit.columns]
         if y:
             st.plotly_chart(px.line(macro_credit.tail(750), x="date", y=y, title="Macro-Credit Risk Indicators"), use_container_width=True)
-    elif not overlay.empty:
-        st.subheader("Legacy Credit-Macro Overlay")
+    if not overlay.empty:
+        st.subheader("Credit-Macro Overlay")
         st.dataframe(overlay.tail(250), use_container_width=True)
         if "credit_macro_score" in overlay.columns:
-            st.plotly_chart(px.line(overlay.tail(750), x="date", y="credit_macro_score", title="Credit-Macro Score"), use_container_width=True)
-    else:
+            st.plotly_chart(px.line(overlay.tail(750), x="date", y="credit_macro_score", title="Risk-On / Risk-Off Overlay Score"), use_container_width=True)
+    if macro_credit.empty and overlay.empty:
         st.info("No credit-macro data yet.")
 
-with tabs[9]:
+with tabs[8]:
     st.header("Institutional Risk")
     risk = safe_read_csv(paths["risk"])
     if not risk.empty:
@@ -260,36 +251,7 @@ with tabs[9]:
         if {"scenario", "portfolio_loss"}.issubset(stress.columns):
             st.plotly_chart(px.bar(stress, x="scenario", y="portfolio_loss", title="Scenario Portfolio Loss"), use_container_width=True)
 
-with tabs[10]:
-    st.header("OMS & Human Approval")
-    sig = safe_read_csv(paths["signals"])
-    if sig.empty:
-        st.info("Run V8 model first.")
-    else:
-        symbol = st.selectbox("Symbol", sig["symbol"].astype(str).tolist(), key="oms_symbol")
-        row = sig[sig.symbol.astype(str) == symbol].iloc[0]
-        qty = st.number_input("Quantity", min_value=0.0, value=1.0, step=1.0)
-        side = st.selectbox("Side", ["BUY", "SELL"], key="oms_side")
-        notional = float(row.close) * qty
-        need_approval = approval_required(nav, notional)
-        lev_mult = leverage_multiplier(0.25, 0.02, 0.05, str(row.get("market_regime", "Neutral")))
-        st.metric("Order notional", f"${notional:,.0f}")
-        st.metric("Dynamic leverage multiplier", f"{lev_mult:.0%}")
-        if need_approval:
-            st.warning("Human approval required for this order.")
-        else:
-            st.info("Small order: approval can be automatic in paper/testnet mode.")
-        if st.button("Create OMS ticket"):
-            ticket = OrderTicket(symbol=symbol, side=side, quantity=qty, reason=f"V8 CIO signal; testnet={testnet_mode}", live_mode=live_mode)
-            rec = create_order(ticket)
-            log_event("OMS", "CREATE_TICKET", json.dumps(rec), symbol=symbol, live_mode_enabled=live_mode)
-            st.success(f"Created ticket {rec['order_id']}")
-        orders = load_orders()
-        if not orders.empty:
-            st.subheader("Order Book")
-            st.dataframe(orders, use_container_width=True)
-
-with tabs[11]:
+with tabs[9]:
     st.header("AI Research")
     note = safe_read_text(paths["v8_summary"])
     legacy = safe_read_text(paths["v5_note"])
@@ -304,7 +266,7 @@ with tabs[11]:
         st.subheader("Feature Explainability")
         st.dataframe(xai, use_container_width=True)
 
-with tabs[12]:
+with tabs[10]:
     st.header("Model Governance")
     gov = safe_read_csv(paths["v5_gov"])
     validation = safe_read_csv(paths["v5_validation"])
@@ -318,5 +280,3 @@ with tabs[12]:
     if not monitoring.empty:
         st.subheader("Monitoring")
         st.dataframe(monitoring, use_container_width=True)
-    if gov.empty and validation.empty and monitoring.empty:
-        st.info("Run V8 model first.")

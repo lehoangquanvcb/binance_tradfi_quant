@@ -109,7 +109,10 @@ def _download_yahoo_ohlcv(ticker: str, bsym: str, start: str) -> pd.DataFrame:
 def fetch_prices(start='2018-01-01', interval='1d', prefer='yahoo') -> pd.DataFrame:
     cfg = load_cfg()
     fallback = cfg['tradfi_symbols']
-    symbols = discover_tradfi_symbols(fallback)
+    # For Yahoo mode, use the configured investment universe directly.
+    # Binance exchangeInfo may return only a small subset of TradFi-like symbols,
+    # which can accidentally shrink the universe to APPLUSDT or similar.
+    symbols = fallback if prefer == 'yahoo' else discover_tradfi_symbols(fallback)
     frames = []
     if prefer == 'binance':
         for s in symbols:
@@ -177,7 +180,7 @@ def run_all(
     **kwargs
 ):
     run_id = now_utc().replace(':','').replace('+','_')
-    log_event('RUN', 'START', f'start={start}, prefer={prefer}, nav={nav}, walk_forward={run_walk_forward}')
+    log_event('RUN', 'START', f'start={start}, prefer={prefer}, nav={nav}, walk_forward={run_walk_forward}, backtest_mode={backtest_mode}')
     ds = build_dataset(start=start, prefer=prefer)
     metrics = train_model(ds, MODELS/'xgb_direction_model.joblib')
     signals = predict_latest(ds, MODELS/'xgb_direction_model.joblib')
