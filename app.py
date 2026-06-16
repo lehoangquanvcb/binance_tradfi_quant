@@ -1,7 +1,10 @@
 import json
-import streamlit as st
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
+import streamlit as st
+
 from src.config import DATA_PROCESSED, OUTPUTS, ROOT
 from src.pipeline import run_all
 from src.risk import position_size
@@ -15,374 +18,335 @@ from src.execution_quality import execution_quality_report
 
 
 def safe_read_csv(path):
-    """Read CSV safely. Return empty DataFrame if file is missing, empty, or malformed."""
     try:
-        if path is None or (hasattr(path, 'exists') and not path.exists()):
-            return pd.DataFrame()
-        if hasattr(path, 'stat') and path.stat().st_size == 0:
+        if path is None or not Path(path).exists() or Path(path).stat().st_size == 0:
             return pd.DataFrame()
         return pd.read_csv(path)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
-    except Exception as e:
-        st.warning(f'Could not read {path}: {e}')
+    except Exception as exc:
+        st.warning(f"Could not read {path}: {exc}")
         return pd.DataFrame()
 
-st.set_page_config(page_title='V6.2 Market Intelligence Platform', layout='wide')
-st.title('V6.2 Market Intelligence Platform')
-st.caption('Institutional-grade TradFi quant platform with V6 multi-model ensemble, macro-credit intelligence, portfolio construction, risk governance, OMS and AI research assistant.')
+
+def safe_float(value, default=0.0):
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def show_empty_run_message(label="Run / Refresh model first."):
+    st.info(label)
+
+
+st.set_page_config(page_title="V7 Market Intelligence Platform", layout="wide")
+st.title("V7 Market Intelligence Platform")
+st.caption(
+    "Market Timing → Sector Rotation → Stock Ranking → Exit Watchlist, with portfolio risk, OMS, paper trading and model governance."
+)
 
 with st.sidebar:
-    st.header('Controls')
-    start = st.text_input('Start date', '2018-01-01')
-    prefer = st.selectbox('Data source priority', ['yahoo','binance'])
-    nav = st.number_input('Portfolio NAV (USD)', min_value=1000.0, value=100000.0, step=1000.0)
-    risk_pct = st.slider('Risk per trade', 0.001, 0.03, 0.01, 0.001)
-    run_wf = st.checkbox('Run walk-forward backtest', value=False)
-    backtest_mode = st.selectbox('Backtest mode', ['fast','standard','full'], index=0, help='Fast is recommended for Streamlit Cloud; Full can take many minutes.')
-    testnet_mode = st.checkbox('Binance testnet / sandbox mode', value=True)
-    live_mode = st.checkbox('Live mode enabled', value=False, help='Real orders remain gated by execution.py, OMS, approval and kill-switch controls.')
-    if st.button('Run / Refresh V6.2 model'):
-        with st.spinner(f'Running V6.2 Market Intelligence pipeline... Backtest={run_wf}, mode={backtest_mode}'):
-            metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(start=start, prefer=prefer, nav=nav, run_walk_forward=run_wf, backtest_mode=backtest_mode)
-            st.success(f'Done. AUC={metrics.get("auc")}, Accuracy={metrics.get("accuracy"):.2%}')
+    st.header("Controls")
+    start = st.text_input("Start date", "2018-01-01")
+    prefer = st.selectbox("Data source priority", ["yahoo", "binance"])
+    nav = st.number_input("Portfolio NAV (USD)", min_value=1000.0, value=100000.0, step=1000.0)
+    risk_pct = st.slider("Risk per trade", 0.001, 0.03, 0.01, 0.001)
+    run_wf = st.checkbox("Run walk-forward backtest", value=False)
+    backtest_mode = st.selectbox(
+        "Backtest mode", ["fast", "standard", "full"], index=0,
+        help="Fast is recommended for Streamlit Cloud; Full can take many minutes."
+    )
+    testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
+    live_mode = st.checkbox(
+        "Live mode enabled", value=False,
+        help="Real orders remain gated by execution.py, OMS, approval and kill-switch controls."
+    )
+    if st.button("Run / Refresh V7 model"):
+        with st.spinner(f"Running V7 Market Intelligence pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+            metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
+                start=start, prefer=prefer, nav=nav,
+                run_walk_forward=run_wf, backtest_mode=backtest_mode
+            )
+            st.success(f"Done. AUC={metrics.get('auc')}, Accuracy={safe_float(metrics.get('accuracy')):.2%}")
 
 paths = {
-    'signals': DATA_PROCESSED/'latest_signals.csv',
-    'ensemble': DATA_PROCESSED/'ensemble_signals.csv',
-    'risk': DATA_PROCESSED/'risk_metrics.csv',
-    'regimes': DATA_PROCESSED/'market_regimes.csv',
-    'portfolio': DATA_PROCESSED/'target_portfolio.csv',
-    'allocation': DATA_PROCESSED/'strategy_allocation.csv',
-    'backtest': DATA_PROCESSED/'walk_forward_backtest.csv',
-    'bt_summary': DATA_PROCESSED/'walk_forward_summary.csv',
-    'monitoring': DATA_PROCESSED/'model_monitoring.csv',
-    'xai': DATA_PROCESSED/'feature_explainability.csv',
-    'v5_weights': DATA_PROCESSED/'v5_portfolio_construction.csv',
-    'v5_factors': DATA_PROCESSED/'v5_factor_scores.csv',
-    'v5_exposure': DATA_PROCESSED/'v5_factor_exposure.csv',
-    'v5_overlay': DATA_PROCESSED/'v5_credit_macro_overlay.csv',
-    'v5_inst_risk': DATA_PROCESSED/'v5_institutional_risk.csv',
-    'v5_stress': DATA_PROCESSED/'v5_stress_scenarios.csv',
-    'v5_alt': DATA_PROCESSED/'v5_alternative_sentiment.csv',
-    'v5_events': DATA_PROCESSED/'v5_macro_event_calendar.csv',
-    'v5_note': DATA_PROCESSED/'v5_ai_research_note.txt',
-    'v5_gov': DATA_PROCESSED/'v5_model_governance_latest.csv',
-    'v5_validation': DATA_PROCESSED/'v5_model_validation.csv',
-    'v55_macro_credit': DATA_PROCESSED/'v55_macro_credit_dashboard.csv',
-    'v55_econ_regime': DATA_PROCESSED/'v55_economic_regime.csv',
-    'v55_cross_asset': DATA_PROCESSED/'v55_cross_asset_intelligence.csv',
-    'v55_earnings': DATA_PROCESSED/'v55_earnings_intelligence.csv',
-    'v55_allocation': DATA_PROCESSED/'v55_dynamic_asset_allocation.csv',
-    'v6_metrics': DATA_PROCESSED/'v6_model_metrics.csv',
-    'v6_predictions': DATA_PROCESSED/'v6_model_predictions.csv',
-    'v6_feature_power': DATA_PROCESSED/'v6_feature_power.csv',
-    'v6_alpha_quality': DATA_PROCESSED/'v6_alpha_quality.csv',
-    'v6_signal_distribution': DATA_PROCESSED/'v6_signal_distribution.csv',
-    'v62_market_timing': DATA_PROCESSED/'v62_market_timing.csv',
-    'v62_sector_rotation': DATA_PROCESSED/'v62_sector_rotation.csv',
-    'v62_stock_ranking': DATA_PROCESSED/'v62_stock_ranking.csv',
-    'v62_exit_watchlist': DATA_PROCESSED/'v62_exit_watchlist.csv',
+    "signals": DATA_PROCESSED / "latest_signals.csv",
+    "ensemble": DATA_PROCESSED / "ensemble_signals.csv",
+    "risk": DATA_PROCESSED / "risk_metrics.csv",
+    "regimes": DATA_PROCESSED / "market_regimes.csv",
+    "portfolio": DATA_PROCESSED / "target_portfolio.csv",
+    "monitoring": DATA_PROCESSED / "model_monitoring.csv",
+    "xai": DATA_PROCESSED / "feature_explainability.csv",
+    "weights": DATA_PROCESSED / "v5_portfolio_construction.csv",
+    "factors": DATA_PROCESSED / "v5_factor_scores.csv",
+    "exposure": DATA_PROCESSED / "v5_factor_exposure.csv",
+    "macro_credit": DATA_PROCESSED / "v55_macro_credit_dashboard.csv",
+    "overlay": DATA_PROCESSED / "v5_credit_macro_overlay.csv",
+    "inst_risk": DATA_PROCESSED / "v5_institutional_risk.csv",
+    "stress": DATA_PROCESSED / "v5_stress_scenarios.csv",
+    "note": DATA_PROCESSED / "v5_ai_research_note.txt",
+    "governance": DATA_PROCESSED / "v5_model_governance_latest.csv",
+    "validation": DATA_PROCESSED / "v5_model_validation.csv",
+    "v6_metrics": DATA_PROCESSED / "v6_model_metrics.csv",
+    "v6_feature_power": DATA_PROCESSED / "v6_feature_power.csv",
+    "v6_alpha_quality": DATA_PROCESSED / "v6_alpha_quality.csv",
+    "market_timing": DATA_PROCESSED / "v62_market_timing.csv",
+    "sector_rotation": DATA_PROCESSED / "v62_sector_rotation.csv",
+    "stock_ranking": DATA_PROCESSED / "v62_stock_ranking.csv",
+    "exit_watchlist": DATA_PROCESSED / "v62_exit_watchlist.csv",
 }
 
-
+# Lean tab set: removed duplicated/low-value V5.5/V6 diagnostic tabs and folded useful diagnostics into Governance.
 tabs = st.tabs([
-    '1. Signals','2. Institutional Portfolio','3. Factor Exposure','4. Credit-Macro Overlay',
-    '5. Institutional Risk','6. OMS & Approval','7. Execution Quality','8. Paper Trading',
-    '9. Alternative Data','10. AI Research Assistant','11. Model Governance','12. Database & Compliance',
-    '13. V5.5 Macro Credit','14. V5.5 Economic Regime','15. V5.5 Cross Asset','16. V5.5 Earnings','17. V5.5 Asset Allocation',
-    '18. V6 Model Engine','19. V6 Feature Power','20. V6 Alpha Quality','21. V6 Signal Distribution',
-    '22. Market Timing','23. Sector Rotation','24. Stock Ranking','25. Exit Watchlist'
+    "1. Market Timing",
+    "2. Sector Rotation",
+    "3. Stock Ranking",
+    "4. Exit Watchlist",
+    "5. Signals",
+    "6. Portfolio",
+    "7. Factor Exposure",
+    "8. Credit-Macro",
+    "9. Institutional Risk",
+    "10. OMS & Approval",
+    "11. Paper Trading",
+    "12. Execution Quality",
+    "13. AI Research",
+    "14. Model Governance",
+    "15. Database",
 ])
 
 with tabs[0]:
-    if paths['ensemble'].exists():
-        sig = pd.read_csv(paths['ensemble'])
-        show_cols = [c for c in ['date','symbol','close','prob_up','signal','cost_adjusted_signal','ensemble_score','ensemble_signal','market_regime','net_edge_bps'] if c in sig.columns]
-        st.dataframe(sig[show_cols].sort_values('ensemble_score', ascending=False), use_container_width=True)
-        st.plotly_chart(px.bar(sig.sort_values('ensemble_score'), x='ensemble_score', y='symbol', orientation='h', title='Ensemble Score'), use_container_width=True)
-    elif paths['signals'].exists():
-        sig = pd.read_csv(paths['signals'])
-        st.dataframe(sig.sort_values('prob_up', ascending=False), use_container_width=True)
+    st.subheader("Market Timing")
+    mt = safe_read_csv(paths["market_timing"])
+    if not mt.empty:
+        latest = mt.sort_values("date").tail(1)
+        row = latest.iloc[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Market Timing Score", f"{safe_float(row.get('market_timing_score')):.1f}/100")
+        c2.metric("Regime", str(row.get("timing_regime", "N/A")))
+        c3.metric("Suggested Equity", f"{safe_float(row.get('suggested_equity_allocation')):.0%}")
+        c4.metric("Suggested Cash", f"{safe_float(row.get('suggested_cash_allocation')):.0%}")
+        ycols = [c for c in ["market_timing_score", "trend_score", "momentum_score", "breadth_score", "credit_macro_score"] if c in mt.columns]
+        if ycols:
+            st.plotly_chart(px.line(mt.tail(750), x="date", y=ycols, title="Market Timing Components"), use_container_width=True)
+        st.dataframe(mt.tail(500), use_container_width=True)
     else:
-        st.info('Click Run / Refresh V5 model first.')
+        show_empty_run_message("Run / Refresh V7 model first to generate market timing.")
 
 with tabs[1]:
-    if paths['v5_weights'].exists():
-        w = pd.read_csv(paths['v5_weights'])
-        st.dataframe(w, use_container_width=True)
-        method = st.selectbox('Portfolio method', [c for c in w.columns if c != 'symbol'])
-        st.plotly_chart(px.pie(w, names='symbol', values=method, title=f'Target Weights - {method}'), use_container_width=True)
+    st.subheader("Sector Rotation")
+    sr = safe_read_csv(paths["sector_rotation"])
+    if not sr.empty:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Overweight / leadership sectors**")
+            st.dataframe(sr[sr.get("recommendation", "").isin(["Overweight"])].head(10), use_container_width=True)
+        with c2:
+            st.markdown("**Underweight / exit sectors**")
+            st.dataframe(sr[sr.get("recommendation", "").isin(["Underweight", "Exit"])].head(10), use_container_width=True)
+        st.plotly_chart(px.bar(sr.sort_values("sector_score"), x="sector_score", y="sector", color="recommendation", orientation="h", title="Sector Rotation Score"), use_container_width=True)
+        st.dataframe(sr, use_container_width=True)
     else:
-        st.info('Run V5 model first.')
+        show_empty_run_message("Run / Refresh V7 model first to generate sector rotation.")
 
 with tabs[2]:
-    c1, c2 = st.columns(2)
-    with c1:
-        if paths['v5_factors'].exists():
-            factors = pd.read_csv(paths['v5_factors'])
-            st.subheader('Symbol factor scores')
-            st.dataframe(factors, use_container_width=True)
-    with c2:
-        if paths['v5_exposure'].exists():
-            expo = pd.read_csv(paths['v5_exposure'])
-            st.subheader('Portfolio factor exposure')
-            st.dataframe(expo, use_container_width=True)
-            st.plotly_chart(px.bar(expo, x=expo.columns[0], y='exposure', title='Factor Exposure'), use_container_width=True)
-    if not paths['v5_factors'].exists(): st.info('Run V5 model first.')
+    st.subheader("Stock Ranking")
+    rk = safe_read_csv(paths["stock_ranking"])
+    if not rk.empty:
+        actions = sorted(rk["action"].dropna().unique().tolist()) if "action" in rk.columns else []
+        selected = st.multiselect("Action filter", actions, default=actions)
+        show = rk[rk["action"].isin(selected)] if selected and "action" in rk.columns else rk
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Buy candidates", int((rk.get("action") == "BUY").sum()) if "action" in rk else 0)
+        c2.metric("Hold candidates", int((rk.get("action") == "HOLD").sum()) if "action" in rk else 0)
+        c3.metric("Exit candidates", int((rk.get("action") == "EXIT").sum()) if "action" in rk else 0)
+        st.plotly_chart(px.bar(show.head(30).sort_values("stock_score"), x="stock_score", y="symbol", color="action", orientation="h", title="Top Stock Candidates"), use_container_width=True)
+        st.dataframe(show.sort_values("stock_score", ascending=False), use_container_width=True)
+    else:
+        show_empty_run_message("Run / Refresh V7 model first to generate stock ranking.")
 
 with tabs[3]:
-    if paths['v5_overlay'].exists():
-        overlay = pd.read_csv(paths['v5_overlay'])
-        st.dataframe(overlay.tail(250), use_container_width=True)
-        if 'credit_macro_score' in overlay.columns:
-            st.plotly_chart(px.line(overlay.tail(500), x='date', y='credit_macro_score', title='Credit-Macro Risk-On/Risk-Off Score'), use_container_width=True)
+    st.subheader("Exit Watchlist")
+    ex = safe_read_csv(paths["exit_watchlist"])
+    if not ex.empty:
+        st.warning("Review these names for de-risking, stop tightening or exit planning.")
+        st.dataframe(ex, use_container_width=True)
+        if "severity" in ex.columns:
+            st.plotly_chart(px.histogram(ex, x="severity", color="action", title="Exit Watchlist by Severity"), use_container_width=True)
     else:
-        st.info('No credit-macro overlay yet.')
+        st.success("No exit candidates under current rules.")
 
 with tabs[4]:
-    if paths['risk'].exists():
-        risk = pd.read_csv(paths['risk'])
-        kill = evaluate_kill_switch(risk)
-        st.subheader('Kill Switch')
-        if kill['allow_trading']: st.success('Trading allowed: no hard breach detected.')
-        else: st.error('Trading blocked by kill switch.'); st.write(kill['breaches'])
-        st.dataframe(risk, use_container_width=True)
-    if paths['v5_inst_risk'].exists():
-        st.subheader('Portfolio VaR / CVaR / Concentration')
-        st.dataframe(pd.read_csv(paths['v5_inst_risk']), use_container_width=True)
-    if paths['v5_stress'].exists():
-        st.subheader('Stress Scenarios')
-        stress = pd.read_csv(paths['v5_stress'])
-        st.dataframe(stress, use_container_width=True)
-        st.plotly_chart(px.bar(stress, x='scenario', y='portfolio_loss', title='Scenario Portfolio Loss'), use_container_width=True)
+    st.subheader("Signals")
+    sig = safe_read_csv(paths["ensemble"])
+    if sig.empty:
+        sig = safe_read_csv(paths["signals"])
+    if not sig.empty:
+        show_cols = [c for c in ["date", "symbol", "close", "prob_up", "signal", "cost_adjusted_signal", "ensemble_score", "ensemble_signal", "market_regime", "net_edge_bps"] if c in sig.columns]
+        sort_col = "ensemble_score" if "ensemble_score" in sig.columns else ("prob_up" if "prob_up" in sig.columns else show_cols[0])
+        st.dataframe(sig[show_cols].sort_values(sort_col, ascending=False), use_container_width=True)
+        if sort_col in sig.columns and "symbol" in sig.columns:
+            st.plotly_chart(px.bar(sig.sort_values(sort_col), x=sort_col, y="symbol", orientation="h", title="Signal Score"), use_container_width=True)
+    else:
+        show_empty_run_message()
 
 with tabs[5]:
-    st.subheader('Order Management System & Human Approval Gate')
-    sig = pd.read_csv(paths['signals']) if paths['signals'].exists() else pd.DataFrame()
-    if not sig.empty:
-        symbol = st.selectbox('Symbol', sig['symbol'].tolist(), key='oms_symbol')
-        row = sig[sig.symbol == symbol].iloc[0]
-        qty = st.number_input('Quantity', min_value=0.0, value=1.0, step=1.0)
-        side = st.selectbox('Side', ['BUY','SELL'], key='oms_side')
-        notional = float(row.close) * qty
-        need_approval = approval_required(nav, notional)
-        lev_mult = leverage_multiplier(0.25, 0.02, 0.05, str(row.get('market_regime','Neutral')))
-        st.metric('Order notional', f'${notional:,.0f}')
-        st.metric('Dynamic leverage multiplier', f'{lev_mult:.0%}')
-        st.warning('Human approval required for this order.') if need_approval else st.info('Small order: approval can be automatic in paper mode.')
-        if st.button('Create OMS ticket'):
-            ticket = OrderTicket(symbol=symbol, side=side, quantity=qty, reason=f'V5 signal; testnet={testnet_mode}', live_mode=live_mode)
-            rec = create_order(ticket)
-            log_event('OMS', 'CREATE_TICKET', json.dumps(rec), symbol=symbol, live_mode_enabled=live_mode)
-            st.success('OMS ticket created. Status = PENDING_APPROVAL.')
-    st.dataframe(load_orders(), use_container_width=True)
+    st.subheader("Institutional Portfolio")
+    w = safe_read_csv(paths["weights"])
+    if not w.empty:
+        st.dataframe(w, use_container_width=True)
+        method = st.selectbox("Portfolio method", [c for c in w.columns if c != "symbol"])
+        st.plotly_chart(px.pie(w, names="symbol", values=method, title=f"Target Weights - {method}"), use_container_width=True)
+    else:
+        show_empty_run_message()
 
 with tabs[6]:
-    st.subheader('Execution Quality Analytics')
-    orders = load_orders()
-    st.dataframe(execution_quality_report(orders), use_container_width=True)
-    st.caption('Production version should enrich this table with exchange timestamps, average fill price, benchmark price, latency, partial fills and rejections.')
-
-with tabs[7]:
-    sig_path = paths['signals']
-    if sig_path.exists():
-        sig = pd.read_csv(sig_path)
-        symbol = st.selectbox('Symbol for paper order', sig['symbol'].tolist())
-        row = sig[sig.symbol == symbol].iloc[0]
-        ps = position_size(nav, float(row.close), float(row.atr_14), risk_pct=risk_pct)
-        st.json(ps)
-        qty = st.number_input('Paper quantity', min_value=0.0, value=float(max(ps['qty'], 0)), step=1.0)
-        side = st.selectbox('Side for paper trade', ['BUY','SELL'])
-        if st.button('Record paper trade'):
-            cost = estimate_transaction_cost(float(row.close), qty, side)
-            append_paper_trade(symbol, side, qty, float(row.close), float(row.prob_up), stop_loss=ps['stop'], reason=f'paper_trade_cost={cost}', ledger_path=OUTPUTS/'paper_trades.csv')
-            log_event('ORDER', 'PAPER_TRADE', json.dumps(cost), symbol=symbol, live_mode_enabled=live_mode)
-            st.success('Paper trade recorded.')
-        st.dataframe(load_paper_trades(OUTPUTS/'paper_trades.csv'), use_container_width=True)
-    else:
-        st.info('Run model first.')
-
-with tabs[8]:
+    st.subheader("Factor Exposure")
+    factors = safe_read_csv(paths["factors"])
+    expo = safe_read_csv(paths["exposure"])
     c1, c2 = st.columns(2)
     with c1:
-        if paths['v5_alt'].exists(): st.dataframe(pd.read_csv(paths['v5_alt']), use_container_width=True)
+        if not factors.empty:
+            st.dataframe(factors, use_container_width=True)
     with c2:
-        if paths['v5_events'].exists(): st.dataframe(pd.read_csv(paths['v5_events']), use_container_width=True)
-    st.caption('Demo sentiment is deterministic. Connect NewsAPI/Finnhub/Reddit/X in production through src/alternative_data.py.')
+        if not expo.empty:
+            st.dataframe(expo, use_container_width=True)
+            if "exposure" in expo.columns:
+                st.plotly_chart(px.bar(expo, x=expo.columns[0], y="exposure", title="Portfolio Factor Exposure"), use_container_width=True)
+    if factors.empty and expo.empty:
+        show_empty_run_message()
+
+with tabs[7]:
+    st.subheader("Credit-Macro")
+    mc = safe_read_csv(paths["macro_credit"])
+    overlay = safe_read_csv(paths["overlay"])
+    if not mc.empty:
+        latest = mc.sort_values("date").tail(1)
+        row = latest.iloc[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Risk Regime", str(row.get("risk_regime", "N/A")))
+        c2.metric("6M Recession", f"{safe_float(row.get('recession_probability_6m')):.1%}")
+        c3.metric("Equity Risk", f"{safe_float(row.get('equity_risk_score')):.1f}/100")
+        c4.metric("Credit Stress", f"{safe_float(row.get('credit_stress_score')):.1f}/100")
+        ycols = [c for c in ["equity_risk_score", "credit_stress_score", "recession_probability_6m", "macro_credit_composite"] if c in mc.columns]
+        if ycols:
+            st.plotly_chart(px.line(mc.tail(750), x="date", y=ycols, title="Macro-Credit Risk Dashboard"), use_container_width=True)
+        st.dataframe(mc.tail(500), use_container_width=True)
+    elif not overlay.empty:
+        st.dataframe(overlay.tail(500), use_container_width=True)
+        if "credit_macro_score" in overlay.columns:
+            st.plotly_chart(px.line(overlay.tail(500), x="date", y="credit_macro_score", title="Credit-Macro Score"), use_container_width=True)
+    else:
+        show_empty_run_message()
+
+with tabs[8]:
+    st.subheader("Institutional Risk")
+    risk = safe_read_csv(paths["risk"])
+    if not risk.empty:
+        kill = evaluate_kill_switch(risk)
+        if kill.get("allow_trading", True):
+            st.success("Trading allowed: no hard breach detected.")
+        else:
+            st.error("Trading blocked by kill switch.")
+            st.write(kill.get("breaches", []))
+        st.dataframe(risk, use_container_width=True)
+    inst = safe_read_csv(paths["inst_risk"])
+    stress = safe_read_csv(paths["stress"])
+    if not inst.empty:
+        st.subheader("Portfolio VaR / CVaR / Concentration")
+        st.dataframe(inst, use_container_width=True)
+    if not stress.empty:
+        st.subheader("Stress Scenarios")
+        st.dataframe(stress, use_container_width=True)
+        if {"scenario", "portfolio_loss"}.issubset(stress.columns):
+            st.plotly_chart(px.bar(stress, x="scenario", y="portfolio_loss", title="Scenario Portfolio Loss"), use_container_width=True)
+    if risk.empty and inst.empty and stress.empty:
+        show_empty_run_message()
 
 with tabs[9]:
-    if paths['v5_note'].exists():
-        st.write(paths['v5_note'].read_text(encoding='utf-8'))
-    else:
-        st.info('Run V5 model first.')
-    if paths['xai'].exists():
-        xai = pd.read_csv(paths['xai'])
-        st.plotly_chart(px.bar(xai.head(20).sort_values('importance'), x='importance', y='feature', orientation='h', title='Feature Importance / SHAP'), use_container_width=True)
+    st.subheader("Order Management System & Human Approval Gate")
+    sig = safe_read_csv(paths["signals"])
+    if not sig.empty:
+        symbol = st.selectbox("Symbol", sig["symbol"].astype(str).tolist(), key="oms_symbol")
+        row = sig[sig.symbol.astype(str) == symbol].iloc[0]
+        qty = st.number_input("Quantity", min_value=0.0, value=1.0, step=1.0)
+        side = st.selectbox("Side", ["BUY", "SELL"], key="oms_side")
+        notional = safe_float(row.get("close")) * qty
+        need_approval = approval_required(nav, notional)
+        lev_mult = leverage_multiplier(0.25, 0.02, 0.05, str(row.get("market_regime", "Neutral")))
+        c1, c2 = st.columns(2)
+        c1.metric("Order notional", f"${notional:,.0f}")
+        c2.metric("Dynamic leverage multiplier", f"{lev_mult:.0%}")
+        if need_approval:
+            st.warning("Human approval required for this order.")
+        else:
+            st.info("Small order: approval can be automatic in paper mode.")
+        if st.button("Create OMS ticket"):
+            ticket = OrderTicket(symbol=symbol, side=side, quantity=qty, reason=f"V7 signal; testnet={testnet_mode}", live_mode=live_mode)
+            rec = create_order(ticket)
+            log_event("OMS", "CREATE_TICKET", json.dumps(rec), symbol=symbol, live_mode_enabled=live_mode)
+            st.success("OMS ticket created. Status = PENDING_APPROVAL.")
+    st.dataframe(load_orders(), use_container_width=True)
 
 with tabs[10]:
-    if paths['v5_gov'].exists(): st.dataframe(pd.read_csv(paths['v5_gov']), use_container_width=True)
-    if paths['v5_validation'].exists(): st.dataframe(pd.read_csv(paths['v5_validation']), use_container_width=True)
-    if paths['monitoring'].exists(): st.dataframe(pd.read_csv(paths['monitoring']), use_container_width=True)
+    st.subheader("Paper Trading")
+    sig = safe_read_csv(paths["signals"])
+    if not sig.empty:
+        symbol = st.selectbox("Symbol for paper order", sig["symbol"].astype(str).tolist(), key="paper_symbol")
+        row = sig[sig.symbol.astype(str) == symbol].iloc[0]
+        atr = safe_float(row.get("atr_14"), 0.0)
+        if atr <= 0:
+            atr = max(safe_float(row.get("close"), 1.0) * 0.03, 0.01)
+        ps = position_size(nav, safe_float(row.get("close")), atr, risk_pct=risk_pct)
+        st.json(ps)
+        qty = st.number_input("Paper quantity", min_value=0.0, value=float(max(ps.get("qty", 0), 0)), step=1.0)
+        side = st.selectbox("Side for paper trade", ["BUY", "SELL"], key="paper_side")
+        if st.button("Record paper trade"):
+            cost = estimate_transaction_cost(safe_float(row.get("close")), qty, side)
+            append_paper_trade(symbol, side, qty, safe_float(row.get("close")), safe_float(row.get("prob_up")), stop_loss=ps.get("stop"), reason=f"paper_trade_cost={cost}", ledger_path=OUTPUTS / "paper_trades.csv")
+            log_event("ORDER", "PAPER_TRADE", json.dumps(cost), symbol=symbol, live_mode_enabled=live_mode)
+            st.success("Paper trade recorded.")
+        st.dataframe(load_paper_trades(OUTPUTS / "paper_trades.csv"), use_container_width=True)
+    else:
+        show_empty_run_message()
 
 with tabs[11]:
-    st.write(str(ROOT/'data'/'quant_platform.sqlite'))
-    table = st.selectbox('Table', ['prices','macro','signals','orders','pnl','compliance_log','model_monitoring'])
-    st.dataframe(read_table(table).tail(500), use_container_width=True)
-
+    st.subheader("Execution Quality Analytics")
+    orders = load_orders()
+    st.dataframe(execution_quality_report(orders), use_container_width=True)
+    st.caption("Execution analytics are populated after OMS/paper/live order activity is recorded.")
 
 with tabs[12]:
-    st.subheader('V5.5 Macro & Credit Intelligence')
-    mc = safe_read_csv(paths['v55_macro_credit'])
-    if not mc.empty:
-        latest = mc.sort_values('date').tail(1)
-        c1, c2, c3, c4 = st.columns(4)
-        if not latest.empty:
-            row = latest.iloc[0]
-            c1.metric('Risk regime', str(row.get('risk_regime','N/A')))
-            c2.metric('6M recession probability', f"{float(row.get('recession_probability_6m',0)):.1%}")
-            c3.metric('Equity risk score', f"{float(row.get('equity_risk_score',0)):.1f}/100")
-            c4.metric('Credit stress score', f"{float(row.get('credit_stress_score',0)):.1f}/100")
-        st.dataframe(mc.tail(500), use_container_width=True)
-        if 'equity_risk_score' in mc.columns:
-            st.plotly_chart(px.line(mc.tail(750), x='date', y=['equity_risk_score','credit_stress_score'], title='Macro-Credit Risk Scores'), use_container_width=True)
+    st.subheader("AI Research Assistant")
+    if paths["note"].exists():
+        st.write(paths["note"].read_text(encoding="utf-8"))
     else:
-        st.info('Run / Refresh V5 model first.')
+        show_empty_run_message()
+    xai = safe_read_csv(paths["xai"])
+    if not xai.empty and {"feature", "importance"}.issubset(xai.columns):
+        st.plotly_chart(px.bar(xai.head(25).sort_values("importance"), x="importance", y="feature", orientation="h", title="Feature Importance / SHAP"), use_container_width=True)
 
 with tabs[13]:
-    st.subheader('V5.5 Economic Regime')
-    er = safe_read_csv(paths['v55_econ_regime'])
-    if not er.empty:
-        st.dataframe(er.tail(500), use_container_width=True)
-        if 'economic_regime_v55' in er.columns:
-            st.plotly_chart(px.line(er.tail(750), x='date', y='recession_probability_6m', color='economic_regime_v55', title='6M Recession Probability by Regime'), use_container_width=True)
-    else:
-        st.info('Run / Refresh V5 model first.')
+    st.subheader("Model Governance")
+    gov = safe_read_csv(paths["governance"])
+    val = safe_read_csv(paths["validation"])
+    mon = safe_read_csv(paths["monitoring"])
+    v6m = safe_read_csv(paths["v6_metrics"])
+    fpower = safe_read_csv(paths["v6_feature_power"])
+    alpha = safe_read_csv(paths["v6_alpha_quality"])
+    for title, df in [
+        ("Model Inventory", gov), ("Validation", val), ("Monitoring", mon),
+        ("V6 Model Metrics", v6m), ("Feature Power", fpower), ("Alpha Quality", alpha),
+    ]:
+        if not df.empty:
+            st.markdown(f"**{title}**")
+            st.dataframe(df, use_container_width=True)
 
 with tabs[14]:
-    st.subheader('V5.5 Cross-Asset Intelligence')
-    ca = safe_read_csv(paths['v55_cross_asset'])
-    if not ca.empty:
-        st.dataframe(ca.sort_values('cross_asset_score', ascending=False), use_container_width=True)
-        st.plotly_chart(px.bar(ca.sort_values('cross_asset_score'), x='cross_asset_score', y='symbol', orientation='h', title='Cross-Asset Risk-On/Risk-Off Score'), use_container_width=True)
-    else:
-        st.info('Run / Refresh V5 model first.')
-
-with tabs[15]:
-    st.subheader('V5.5 Earnings Intelligence')
-    ei = safe_read_csv(paths['v55_earnings'])
-    if not ei.empty:
-        st.dataframe(ei.sort_values('earnings_thesis_score', ascending=False), use_container_width=True)
-        st.plotly_chart(px.bar(ei.sort_values('earnings_thesis_score'), x='earnings_thesis_score', y='symbol', orientation='h', title='Earnings Thesis Score'), use_container_width=True)
-        st.caption('Current version provides a stable schema and deterministic proxy. Connect Finnhub/Polygon/Nasdaq earnings API for production data.')
-    else:
-        st.info('Run / Refresh V5 model first.')
-
-with tabs[16]:
-    st.subheader('V5.5 Dynamic Asset Allocation')
-    aa = safe_read_csv(paths['v55_allocation'])
-    if not aa.empty:
-        st.dataframe(aa, use_container_width=True)
-        st.plotly_chart(px.pie(aa, names='asset_class', values='target_weight', title='Macro-Credit Strategic Allocation'), use_container_width=True)
-    else:
-        st.info('Run / Refresh V5 model first.')
-
-
-# ---------------- V6 Model Engine Tabs ----------------
-with tabs[17]:
-    st.subheader('V6 Model Engine Diagnostics')
-    m = safe_read_csv(paths.get('v6_metrics'))
-    p = safe_read_csv(paths.get('v6_predictions'))
-    if not m.empty:
-        st.dataframe(m, use_container_width=True)
-        auc_cols = [c for c in ['auc','accuracy','precision','recall'] if c in m.columns]
-        if auc_cols and 'model' in m.columns:
-            melted = m.melt(id_vars='model', value_vars=auc_cols, var_name='metric', value_name='value')
-            st.plotly_chart(px.bar(melted, x='model', y='value', color='metric', barmode='group', title='V6 Model Comparison'), use_container_width=True)
-    else:
-        st.info('Run / Refresh V6 model first.')
-    if not p.empty:
-        st.subheader('Latest V6 Predictions')
-        show = [c for c in ['date','symbol','close','prob_xgb','prob_lgbm','prob_rf','prob_logit','prob_ensemble','prob_up','signal'] if c in p.columns]
-        st.dataframe(p[show].sort_values('prob_up', ascending=False), use_container_width=True)
-
-with tabs[18]:
-    st.subheader('V6 Feature Power')
-    fp = safe_read_csv(paths.get('v6_feature_power'))
-    if not fp.empty:
-        st.dataframe(fp, use_container_width=True)
-        if 'spearman_ic' in fp.columns:
-            st.plotly_chart(px.bar(fp.head(25).sort_values('spearman_ic'), x='spearman_ic', y='feature', orientation='h', title='Feature Predictive Power'), use_container_width=True)
-    else:
-        st.info('No V6 feature power file yet.')
-
-with tabs[19]:
-    st.subheader('V6 Alpha Quality')
-    aq = safe_read_csv(paths.get('v6_alpha_quality'))
-    if not aq.empty:
-        st.dataframe(aq, use_container_width=True)
-    else:
-        st.info('No V6 alpha quality file yet.')
-
-with tabs[20]:
-    st.subheader('V6 Signal Distribution')
-    sd = safe_read_csv(paths.get('v6_signal_distribution'))
-    if not sd.empty:
-        st.dataframe(sd, use_container_width=True)
-        if {'signal','count'}.issubset(sd.columns):
-            st.plotly_chart(px.pie(sd, names='signal', values='count', title='Signal Distribution'), use_container_width=True)
-    else:
-        st.info('No V6 signal distribution file yet.')
-
-
-# ---------------- V6.2 Market Intelligence Tabs ----------------
-with tabs[21]:
-    st.subheader('V6.2 Market Timing')
-    mt = safe_read_csv(paths.get('v62_market_timing'))
-    if not mt.empty:
-        latest = mt.sort_values('date').tail(1)
-        if not latest.empty:
-            row = latest.iloc[0]
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric('Market Timing Score', f"{float(row.get('market_timing_score', 0)):.1f}/100")
-            c2.metric('Regime', str(row.get('timing_regime', 'N/A')))
-            c3.metric('Suggested Equity', f"{float(row.get('suggested_equity_allocation', 0)):.0%}")
-            c4.metric('Suggested Cash', f"{float(row.get('suggested_cash_allocation', 0)):.0%}")
-        st.dataframe(mt.tail(500), use_container_width=True)
-        ycols = [c for c in ['market_timing_score','trend_score','momentum_score','breadth_score','credit_macro_score'] if c in mt.columns]
-        if ycols:
-            st.plotly_chart(px.line(mt.tail(750), x='date', y=ycols, title='Market Timing Components'), use_container_width=True)
-    else:
-        st.info('Run / Refresh V6.2 model first.')
-
-with tabs[22]:
-    st.subheader('V6.2 Sector Rotation')
-    sr = safe_read_csv(paths.get('v62_sector_rotation'))
-    if not sr.empty:
-        st.dataframe(sr, use_container_width=True)
-        if 'sector_score' in sr.columns:
-            st.plotly_chart(px.bar(sr.sort_values('sector_score'), x='sector_score', y='sector', color='recommendation', orientation='h', title='Sector Rotation Score'), use_container_width=True)
-    else:
-        st.info('Run / Refresh V6.2 model first.')
-
-with tabs[23]:
-    st.subheader('V6.2 Stock Ranking')
-    rk = safe_read_csv(paths.get('v62_stock_ranking'))
-    if not rk.empty:
-        action_filter = st.multiselect('Action filter', sorted(rk['action'].dropna().unique().tolist()) if 'action' in rk.columns else [], default=sorted(rk['action'].dropna().unique().tolist()) if 'action' in rk.columns else [])
-        show = rk[rk['action'].isin(action_filter)] if action_filter and 'action' in rk.columns else rk
-        st.dataframe(show.sort_values('stock_score', ascending=False), use_container_width=True)
-        if 'stock_score' in show.columns:
-            st.plotly_chart(px.bar(show.head(25).sort_values('stock_score'), x='stock_score', y='symbol', color='action', orientation='h', title='Top Stock Candidates'), use_container_width=True)
-    else:
-        st.info('Run / Refresh V6.2 model first.')
-
-with tabs[24]:
-    st.subheader('V6.2 Exit Watchlist')
-    ex = safe_read_csv(paths.get('v62_exit_watchlist'))
-    if not ex.empty:
-        st.dataframe(ex, use_container_width=True)
-        if 'severity' in ex.columns:
-            st.plotly_chart(px.histogram(ex, x='severity', color='action', title='Exit Watchlist by Severity'), use_container_width=True)
-    else:
-        st.success('No exit candidates under current rules.')
+    st.subheader("Database")
+    st.write(str(ROOT / "data" / "quant_platform.sqlite"))
+    table = st.selectbox("Table", ["prices", "macro", "signals", "orders", "pnl", "compliance_log", "model_monitoring"])
+    st.dataframe(read_table(table).tail(500), use_container_width=True)
