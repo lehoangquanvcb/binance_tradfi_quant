@@ -32,6 +32,12 @@ from .economic_regime_v55 import classify_economic_regime
 from .cross_asset_intelligence import cross_asset_signals
 from .earnings_intelligence import build_earnings_intelligence
 from .dynamic_asset_allocation_v55 import strategic_allocation
+from .market_regime_engine import build_market_regime
+from .sector_rotation_engine import build_sector_rotation_v8
+from .stock_selection_engine import build_stock_selection_v8
+from .exit_watchlist_engine import build_exit_watchlist_v8
+from .portfolio_constructor import construct_portfolio_v8
+from .cio_dashboard import build_cio_summary
 from .market_timing import build_market_timing
 from .sector_rotation import build_sector_rotation
 from .stock_ranking import build_stock_ranking
@@ -239,6 +245,14 @@ def run_all(
     stock_ranking = build_stock_ranking(ensemble if not ensemble.empty else signals, close_panel, sector_rotation, market_timing)
     exit_watchlist = build_exit_watchlist(stock_ranking, close_panel, market_timing, sector_rotation)
 
+    # V8 CIO / Portfolio Manager Edition
+    market_regime_v8 = build_market_regime(close_panel, macro_credit)
+    sector_rotation_v8 = build_sector_rotation_v8(close_panel, market_regime_v8)
+    stock_selection_v8 = build_stock_selection_v8(ensemble if not ensemble.empty else signals, close_panel, sector_rotation_v8, market_regime_v8)
+    exit_watchlist_v8 = build_exit_watchlist_v8(stock_selection_v8, close_panel, market_regime_v8, sector_rotation_v8)
+    portfolio_recommendation_v8 = construct_portfolio_v8(stock_selection_v8, sector_rotation_v8, market_regime_v8, nav=nav)
+    cio_summary_v8 = build_cio_summary(market_regime_v8, sector_rotation_v8, stock_selection_v8, exit_watchlist_v8, portfolio_recommendation_v8)
+
     latest_regime_v5 = str(macro_summary.get('risk_regime', overlay['overlay_regime'].iloc[-1]))
     research_note = portfolio_brief(weights_overlay, exposures, regime=latest_regime_v5)
     recession_prob = float(macro_summary.get("recession_probability_6m") or 0.0)
@@ -277,7 +291,13 @@ def run_all(
     sector_rotation.to_csv(DATA_PROCESSED/'v62_sector_rotation.csv', index=False)
     stock_ranking.to_csv(DATA_PROCESSED/'v62_stock_ranking.csv', index=False)
     exit_watchlist.to_csv(DATA_PROCESSED/'v62_exit_watchlist.csv', index=False)
-    (DATA_PROCESSED/'v5_ai_research_note.txt').write_text(research_note, encoding='utf-8')
+    market_regime_v8.to_csv(DATA_PROCESSED/'v8_market_regime.csv', index=False)
+    sector_rotation_v8.to_csv(DATA_PROCESSED/'v8_sector_rotation.csv', index=False)
+    stock_selection_v8.to_csv(DATA_PROCESSED/'v8_stock_selection.csv', index=False)
+    exit_watchlist_v8.to_csv(DATA_PROCESSED/'v8_exit_watchlist.csv', index=False)
+    portfolio_recommendation_v8.to_csv(DATA_PROCESSED/'v8_portfolio_recommendation.csv', index=False)
+    (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')
+    (DATA_PROCESSED/'v5_ai_research_note.txt').write_text(research_note + "\n\n" + cio_summary_v8, encoding='utf-8')
     pd.DataFrame([gov_rec]).to_csv(DATA_PROCESSED/'v5_model_governance_latest.csv', index=False)
     pd.DataFrame([validation]).to_csv(DATA_PROCESSED/'v5_model_validation.csv', index=False)
 
