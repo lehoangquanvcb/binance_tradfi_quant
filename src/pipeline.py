@@ -67,6 +67,12 @@ from .ensemble_v11_5 import build_v115_ensemble
 from .regime_probability_v11_5 import build_regime_probability_forecast
 from .sector_strength_v11_5 import build_sector_strength
 from .portfolio_optimizer_v11_5 import build_v115_portfolio_optimizer
+from .dynamic_threshold_v12 import build_dynamic_threshold
+from .meta_model_v12 import build_meta_model_overlay
+from .regime_specific_model_v12 import build_regime_specific_diagnostics
+from .bayesian_ensemble_v12 import build_bayesian_ensemble
+from .confidence_weighted_portfolio_v12 import build_confidence_weighted_portfolio
+from .auto_retraining_trigger_v12 import build_auto_retraining_trigger
 
 
 def load_cfg():
@@ -339,6 +345,15 @@ def run_all(
     v115_ensemble = build_v115_ensemble(stock_selection_v8, v10_alpha_attribution, v115_sector_strength)
     v115_optimized_portfolio = build_v115_portfolio_optimizer(v115_ensemble, returns_panel, nav=nav, max_weight=0.12, cash_buffer=0.10)
 
+    # V12 Production Readiness Upgrade: dynamic thresholds, meta model,
+    # regime-specific diagnostics, Bayesian ensemble and confidence-weighted portfolio.
+    v12_dynamic_thresholds = build_dynamic_threshold(metrics, v9_backtest_metrics, v9_confidence, monitoring)
+    v12_meta_model = build_meta_model_overlay(v115_ensemble, v10_alpha_attribution, stock_selection_v8, v12_dynamic_thresholds)
+    v12_regime_specific = build_regime_specific_diagnostics(ds, signals, regimes)
+    v12_bayesian_ensemble = build_bayesian_ensemble(v12_meta_model, v12_regime_specific, v12_dynamic_thresholds)
+    v12_confidence_weighted_portfolio = build_confidence_weighted_portfolio(v12_bayesian_ensemble, v115_optimized_portfolio, v9_confidence, nav=nav, max_weight=0.10, cash_buffer=0.15)
+    v12_retraining_trigger = build_auto_retraining_trigger(monitoring, v105_readiness, v10_calibration_summary, v12_dynamic_thresholds)
+
     validation = validation_check({
         'auc': metrics.get('auc', 0.0),
         'accuracy': metrics.get('accuracy', 0.0),
@@ -348,8 +363,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v11.5',
-        'V11.5 production portfolio manager: adaptive retraining, ensemble voting, sector strength and robust portfolio optimization',
+        'v12.0',
+        'V12 production-ready CIO workstation: dynamic thresholds, meta model, Bayesian ensemble, regime diagnostics and confidence-weighted portfolio',
         metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
@@ -407,6 +422,12 @@ def run_all(
     v115_regime_probability.to_csv(DATA_PROCESSED/'v115_regime_probability.csv', index=False)
     v115_ensemble.to_csv(DATA_PROCESSED/'v115_ensemble.csv', index=False)
     v115_optimized_portfolio.to_csv(DATA_PROCESSED/'v115_optimized_portfolio.csv', index=False)
+    v12_dynamic_thresholds.to_csv(DATA_PROCESSED/'v12_dynamic_thresholds.csv', index=False)
+    v12_meta_model.to_csv(DATA_PROCESSED/'v12_meta_model_overlay.csv', index=False)
+    v12_regime_specific.to_csv(DATA_PROCESSED/'v12_regime_specific_diagnostics.csv', index=False)
+    v12_bayesian_ensemble.to_csv(DATA_PROCESSED/'v12_bayesian_ensemble.csv', index=False)
+    v12_confidence_weighted_portfolio.to_csv(DATA_PROCESSED/'v12_confidence_weighted_portfolio.csv', index=False)
+    v12_retraining_trigger.to_csv(DATA_PROCESSED/'v12_retraining_trigger.csv', index=False)
     v9_appendix = (
         f"\n\n### V9.0 Institutional Metrics\n"
         f"- Portfolio Sharpe: {v9_backtest_metrics.get('sharpe', 0.0):.2f}\n"
@@ -417,6 +438,7 @@ def run_all(
         f"- Calibration Status: {v10_calibration_summary.get('status', 'N/A')}\n"
         f"- V11 Portfolio Layer: ETF rotation, cross-asset allocation, factor attribution and rebalancing plan generated.\n"
         f"- V11.5 Production Layer: adaptive retraining={v115_retraining_plan.iloc[0].get('retraining_action', 'N/A') if not v115_retraining_plan.empty else 'N/A'}, robust optimizer generated.\n"
+        f"- V12 Production Layer: dynamic threshold={v12_dynamic_thresholds.iloc[0].get('adaptive_mode', 'N/A') if not v12_dynamic_thresholds.empty else 'N/A'}, retraining={v12_retraining_trigger.iloc[0].get('retraining_action', 'N/A') if not v12_retraining_trigger.empty else 'N/A'}, confidence-weighted portfolio generated.\n"
     )
     cio_summary_v8 = cio_summary_v8 + v9_appendix
     (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')

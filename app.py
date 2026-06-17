@@ -35,8 +35,8 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
         st.dataframe(df, use_container_width=True)
 
 
-st.set_page_config(page_title="V11.5 Production Portfolio Manager", layout="wide")
-st.title("V11.5 Production Portfolio Manager")
+st.set_page_config(page_title="V12 Production CIO Workstation", layout="wide")
+st.title("V12 Production CIO Workstation")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V11.5 model"):
-        with st.spinner(f"Running V11.5 Production Portfolio Manager pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V12 model"):
+        with st.spinner(f"Running V12 Production CIO Workstation pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -114,6 +114,12 @@ paths = {
     "v115_regime_probability": DATA_PROCESSED / "v115_regime_probability.csv",
     "v115_ensemble": DATA_PROCESSED / "v115_ensemble.csv",
     "v115_portfolio": DATA_PROCESSED / "v115_optimized_portfolio.csv",
+    "v12_thresholds": DATA_PROCESSED / "v12_dynamic_thresholds.csv",
+    "v12_meta": DATA_PROCESSED / "v12_meta_model_overlay.csv",
+    "v12_regime_diag": DATA_PROCESSED / "v12_regime_specific_diagnostics.csv",
+    "v12_bayesian": DATA_PROCESSED / "v12_bayesian_ensemble.csv",
+    "v12_portfolio": DATA_PROCESSED / "v12_confidence_weighted_portfolio.csv",
+    "v12_retraining": DATA_PROCESSED / "v12_retraining_trigger.csv",
 }
 
 tabs = st.tabs([
@@ -150,13 +156,13 @@ with tabs[0]:
         c3.metric("Equity Weight", f"{float(latest.get('recommended_equity_weight', 0)):.0%}")
         c4.metric("Cash Weight", f"{float(latest.get('recommended_cash_weight', 0)):.0%}")
     else:
-        st.info("Run V11 model to populate CIO dashboard.")
+        st.info("Run V12 model to populate CIO dashboard.")
 
     v90_conf = safe_read_csv(paths["v90_confidence"])
     v90_bt = safe_read_csv(paths["v90_backtest"])
     v90_prob = safe_read_csv(paths["v90_regime_prob"])
     if not v90_conf.empty or not v90_bt.empty or not v90_prob.empty:
-        st.subheader("V11.5 Production Portfolio Manager Metrics")
+        st.subheader("V12 Production CIO Workstation Metrics")
         c1, c2, c3, c4 = st.columns(4)
         if not v90_conf.empty:
             row = v90_conf.tail(1).iloc[0]
@@ -219,6 +225,9 @@ with tabs[0]:
         v115_portfolio = safe_read_csv(paths.get("v115_portfolio"))
         v115_ensemble = safe_read_csv(paths.get("v115_ensemble"))
         v115_retraining = safe_read_csv(paths.get("v115_retraining"))
+        v12_portfolio = safe_read_csv(paths.get("v12_portfolio"))
+        v12_bayesian = safe_read_csv(paths.get("v12_bayesian"))
+        v12_retraining = safe_read_csv(paths.get("v12_retraining"))
         if not v115_retraining.empty:
             st.caption(f"V11.5 retraining action: {v115_retraining.iloc[0].get('retraining_action', 'N/A')}")
         if not v115_ensemble.empty:
@@ -478,19 +487,19 @@ with tabs[10]:
     bt = safe_read_csv(paths["v90_backtest"])
     conf = safe_read_csv(paths["v90_confidence"])
     if not bt.empty:
-        st.subheader("V11 Portfolio Backtest Governance")
+        st.subheader("V12 Portfolio Backtest Governance")
         st.dataframe(bt, use_container_width=True)
     if not conf.empty:
-        st.subheader("V11 Confidence Governance")
+        st.subheader("V12 Confidence Governance")
         st.dataframe(conf, use_container_width=True)
     readiness = safe_read_csv(paths["v105_readiness"])
     cal_sum = safe_read_csv(paths["v10_cal_summary"])
     cal_curve = safe_read_csv(paths["v10_calibration"])
     if not readiness.empty:
-        st.subheader("V11 Institutional Readiness")
+        st.subheader("V12 Institutional Readiness")
         st.dataframe(readiness, use_container_width=True)
     if not cal_sum.empty:
-        st.subheader("V10 Probability Calibration Summary")
+        st.subheader("V12 Probability Calibration Summary")
         st.dataframe(cal_sum, use_container_width=True)
 
         v115_retraining = safe_read_csv(paths.get("v115_retraining"))
@@ -505,5 +514,26 @@ with tabs[10]:
         if not v115_sector.empty:
             st.subheader("V11.5 Sector Relative Strength")
             st.dataframe(v115_sector, use_container_width=True)
+    v12_thresholds = safe_read_csv(paths.get("v12_thresholds"))
+    v12_meta = safe_read_csv(paths.get("v12_meta"))
+    v12_regime_diag = safe_read_csv(paths.get("v12_regime_diag"))
+    v12_bayesian = safe_read_csv(paths.get("v12_bayesian"))
+    v12_portfolio = safe_read_csv(paths.get("v12_portfolio"))
+    v12_retraining = safe_read_csv(paths.get("v12_retraining"))
+    if not v12_thresholds.empty:
+        st.subheader("V12 Dynamic Threshold Governance")
+        st.dataframe(v12_thresholds, use_container_width=True)
+    if not v12_retraining.empty:
+        st.subheader("V12 Auto Retraining Trigger")
+        st.dataframe(v12_retraining, use_container_width=True)
+    if not v12_regime_diag.empty:
+        st.subheader("V12 Regime-Specific Diagnostics")
+        st.dataframe(v12_regime_diag, use_container_width=True)
+    if not v12_bayesian.empty:
+        st.subheader("V12 Bayesian Ensemble")
+        st.dataframe(v12_bayesian.head(20), use_container_width=True)
+    if not v12_portfolio.empty:
+        st.subheader("V12 Confidence-Weighted Portfolio")
+        st.dataframe(v12_portfolio, use_container_width=True)
     if not cal_curve.empty and {"avg_pred", "realized"}.issubset(cal_curve.columns):
         st.plotly_chart(px.line(cal_curve, x="avg_pred", y="realized", markers=True, title="Reliability Curve"), use_container_width=True)
