@@ -56,6 +56,12 @@ from .dynamic_position_sizing import build_dynamic_position_sizing
 from .stop_loss_optimizer import build_stop_loss_plan
 from .institutional_readiness import build_institutional_readiness
 from .ensemble_voting_engine import build_cio_ensemble_vote
+from .sector_etf_rotation_v11 import build_sector_etf_rotation
+from .dynamic_rebalancing_v11 import build_dynamic_rebalance_plan
+from .cross_asset_allocation_v11 import build_cross_asset_allocation
+from .factor_attribution_v11 import build_factor_attribution
+from .black_litterman_optimizer_v11 import build_black_litterman_portfolio
+from .regime_forecast_v11 import build_regime_forecast
 
 
 def load_cfg():
@@ -313,6 +319,14 @@ def run_all(
     v105_stop_plan = build_stop_loss_plan(stock_selection_v8, ds, sizing=v105_dynamic_sizing)
     v105_readiness = build_institutional_readiness(metrics, v9_backtest_metrics, confidence=v9_confidence, monitoring=monitoring)
 
+    # V11 Institutional Portfolio Manager layer.
+    v11_sector_etf_rotation = build_sector_etf_rotation(close_panel, sector_rotation_v8)
+    v11_cross_asset_allocation = build_cross_asset_allocation(close_panel, macro_credit, market_regime_v8, nav=nav)
+    v11_black_litterman_portfolio = build_black_litterman_portfolio(v10_alpha_attribution, returns_panel, nav=nav)
+    v11_dynamic_rebalance = build_dynamic_rebalance_plan(v11_black_litterman_portfolio if not v11_black_litterman_portfolio.empty else v10_optimized_portfolio, readiness=v105_readiness, confidence=v9_confidence, regime=latest_regime_dict)
+    v11_factor_attribution = build_factor_attribution(v11_black_litterman_portfolio if not v11_black_litterman_portfolio.empty else v10_optimized_portfolio, ds, factors)
+    v11_regime_forecast = build_regime_forecast(market_regime_v8, macro_credit)
+
     validation = validation_check({
         'auc': metrics.get('auc', 0.0),
         'accuracy': metrics.get('accuracy', 0.0),
@@ -322,8 +336,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v10.5',
-        'V10.5 institutional CIO workstation: alpha attribution, dynamic sizing, stop optimizer and readiness scoring',
+        'v11.0',
+        'V11 institutional portfolio manager: ETF rotation, dynamic rebalancing, cross-asset allocation, factor attribution and regime forecasts',
         metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
@@ -370,6 +384,12 @@ def run_all(
     v105_dynamic_sizing.to_csv(DATA_PROCESSED/'v105_dynamic_position_sizing.csv', index=False)
     v105_stop_plan.to_csv(DATA_PROCESSED/'v105_stop_loss_plan.csv', index=False)
     v105_readiness.to_csv(DATA_PROCESSED/'v105_institutional_readiness.csv', index=False)
+    v11_sector_etf_rotation.to_csv(DATA_PROCESSED/'v11_sector_etf_rotation.csv', index=False)
+    v11_cross_asset_allocation.to_csv(DATA_PROCESSED/'v11_cross_asset_allocation.csv', index=False)
+    v11_black_litterman_portfolio.to_csv(DATA_PROCESSED/'v11_black_litterman_portfolio.csv', index=False)
+    v11_dynamic_rebalance.to_csv(DATA_PROCESSED/'v11_dynamic_rebalance.csv', index=False)
+    v11_factor_attribution.to_csv(DATA_PROCESSED/'v11_factor_attribution.csv', index=False)
+    v11_regime_forecast.to_csv(DATA_PROCESSED/'v11_regime_forecast.csv', index=False)
     v9_appendix = (
         f"\n\n### V9.0 Institutional Metrics\n"
         f"- Portfolio Sharpe: {v9_backtest_metrics.get('sharpe', 0.0):.2f}\n"
@@ -378,6 +398,7 @@ def run_all(
         f"- Confidence: {float(v9_confidence.iloc[0].get('confidence_score', 0.0)):.1f}/100 ({v9_confidence.iloc[0].get('confidence_label', 'N/A')})\n"
         f"- V10.5 Institutional Readiness: {float(v105_readiness.iloc[0].get('institutional_readiness_score', 0.0)):.1f}/100 ({v105_readiness.iloc[0].get('readiness_label', 'N/A')})\n"
         f"- Calibration Status: {v10_calibration_summary.get('status', 'N/A')}\n"
+        f"- V11 Portfolio Layer: ETF rotation, cross-asset allocation, factor attribution and rebalancing plan generated.\n"
     )
     cio_summary_v8 = cio_summary_v8 + v9_appendix
     (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')

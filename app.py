@@ -35,8 +35,8 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
         st.dataframe(df, use_container_width=True)
 
 
-st.set_page_config(page_title="V10.5 CIO Workstation", layout="wide")
-st.title("V10.5 Institutional CIO Workstation")
+st.set_page_config(page_title="V11 Institutional Portfolio Manager", layout="wide")
+st.title("V11 Institutional Portfolio Manager")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V10.5 model"):
-        with st.spinner(f"Running V10.5 CIO pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V11 model"):
+        with st.spinner(f"Running V11 Portfolio Manager pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -103,6 +103,12 @@ paths = {
     "v105_sizing": DATA_PROCESSED / "v105_dynamic_position_sizing.csv",
     "v105_stop": DATA_PROCESSED / "v105_stop_loss_plan.csv",
     "v105_readiness": DATA_PROCESSED / "v105_institutional_readiness.csv",
+    "v11_sector_etf": DATA_PROCESSED / "v11_sector_etf_rotation.csv",
+    "v11_cross_asset": DATA_PROCESSED / "v11_cross_asset_allocation.csv",
+    "v11_bl_portfolio": DATA_PROCESSED / "v11_black_litterman_portfolio.csv",
+    "v11_rebalance": DATA_PROCESSED / "v11_dynamic_rebalance.csv",
+    "v11_factor_attr": DATA_PROCESSED / "v11_factor_attribution.csv",
+    "v11_regime_forecast": DATA_PROCESSED / "v11_regime_forecast.csv",
 }
 
 tabs = st.tabs([
@@ -139,13 +145,13 @@ with tabs[0]:
         c3.metric("Equity Weight", f"{float(latest.get('recommended_equity_weight', 0)):.0%}")
         c4.metric("Cash Weight", f"{float(latest.get('recommended_cash_weight', 0)):.0%}")
     else:
-        st.info("Run V9 model to populate CIO dashboard.")
+        st.info("Run V11 model to populate CIO dashboard.")
 
     v90_conf = safe_read_csv(paths["v90_confidence"])
     v90_bt = safe_read_csv(paths["v90_backtest"])
     v90_prob = safe_read_csv(paths["v90_regime_prob"])
     if not v90_conf.empty or not v90_bt.empty or not v90_prob.empty:
-        st.subheader("V10.5 Institutional CIO Metrics")
+        st.subheader("V11 Institutional Portfolio Manager Metrics")
         c1, c2, c3, c4 = st.columns(4)
         if not v90_conf.empty:
             row = v90_conf.tail(1).iloc[0]
@@ -162,7 +168,7 @@ with tabs[0]:
     readiness = safe_read_csv(paths["v105_readiness"])
     cal_sum = safe_read_csv(paths["v10_cal_summary"])
     if not readiness.empty or not cal_sum.empty:
-        st.subheader("V10.5 Readiness & Calibration")
+        st.subheader("V10.5/V11 Readiness & Calibration")
         c1, c2, c3 = st.columns(3)
         if not readiness.empty:
             row = readiness.tail(1).iloc[0]
@@ -172,6 +178,21 @@ with tabs[0]:
             c2.metric("Calibration", str(row.get('status', 'N/A')))
             if pd.notna(row.get('calibration_error', None)):
                 c3.metric("Calibration Error", f"{float(row.get('calibration_error', 0)):.3f}")
+
+    v11_cross = safe_read_csv(paths["v11_cross_asset"])
+    v11_bl = safe_read_csv(paths["v11_bl_portfolio"])
+    v11_reb = safe_read_csv(paths["v11_rebalance"])
+    v11_fc = safe_read_csv(paths["v11_regime_forecast"])
+    if not v11_cross.empty or not v11_bl.empty or not v11_fc.empty:
+        st.subheader("V11 Portfolio Manager Overlay")
+        c1, c2, c3 = st.columns(3)
+        if not v11_fc.empty:
+            r = v11_fc.iloc[0]
+            c1.metric("1M Risk-On Probability", f"{float(r.get('risk_on_prob', 0)):.0%}", str(r.get('expected_regime', 'N/A')))
+        if not v11_bl.empty and 'target_weight' in v11_bl.columns:
+            c2.metric("BL Portfolio Names", int(v11_bl['symbol'].nunique()))
+        if not v11_reb.empty:
+            c3.metric("Rebalance Trades", int((v11_reb.get('rebalance_action', pd.Series(dtype=str)) != 'HOLD').sum()))
 
     c1, c2 = st.columns(2)
     with c1:
@@ -212,6 +233,14 @@ with tabs[1]:
             st.plotly_chart(px.area(regime.tail(750), x="date", y=alloc_cols, title="Recommended Risk Budget"), use_container_width=True)
 
 
+    v11_fc = safe_read_csv(paths["v11_regime_forecast"])
+    if not v11_fc.empty:
+        st.subheader("V11 Regime Forecast 1M / 3M / 6M")
+        st.dataframe(v11_fc, use_container_width=True)
+        prob_cols = [c for c in ["risk_on_prob", "neutral_prob", "risk_off_prob"] if c in v11_fc.columns]
+        if prob_cols:
+            st.plotly_chart(px.bar(v11_fc, x="horizon", y=prob_cols, barmode="group", title="Forward Regime Probabilities"), use_container_width=True)
+
     trans = safe_read_csv(paths["v10_transition"])
     if not trans.empty:
         st.subheader("V10 Regime Transition Matrix")
@@ -223,6 +252,13 @@ with tabs[2]:
     show_df(sector)
     if not sector.empty and {"sector_score", "sector"}.issubset(sector.columns):
         st.plotly_chart(px.bar(sector.sort_values("sector_score"), x="sector_score", y="sector", color="sector_action" if "sector_action" in sector.columns else None, orientation="h", title="Sector Rotation Score"), use_container_width=True)
+    v11_sector = safe_read_csv(paths["v11_sector_etf"])
+    if not v11_sector.empty:
+        st.subheader("V11 Sector ETF Rotation")
+        st.dataframe(v11_sector, use_container_width=True)
+        if {"sector", "score"}.issubset(v11_sector.columns):
+            st.plotly_chart(px.bar(v11_sector.sort_values("score"), x="score", y="sector", color="action" if "action" in v11_sector.columns else None, orientation="h", title="V11 Sector ETF Rotation Score"), use_container_width=True)
+
     sector_alloc = safe_read_csv(paths["v10_sector_alloc"])
     if not sector_alloc.empty:
         st.subheader("V10 Sector Allocation Recommendation")
@@ -234,7 +270,7 @@ with tabs[3]:
     st.header("Stock Selection")
     stock = safe_read_csv(paths["v8_stock"])
     if stock.empty:
-        st.info("Run V8 model first.")
+        st.info("Run V11 model first.")
     else:
         cols = [c for c in ["rank", "symbol", "close", "stock_score", "decision", "prob_up", "ensemble_score", "relative_strength_60d", "sector_bucket", "sector_action", "market_regime"] if c in stock.columns]
         st.dataframe(stock[cols], use_container_width=True)
@@ -264,7 +300,7 @@ with tabs[5]:
     if sig.empty:
         sig = safe_read_csv(paths["signals"])
     if sig.empty:
-        st.info("Run V8 model first.")
+        st.info("Run V11 model first.")
     else:
         score_col = "ensemble_score" if "ensemble_score" in sig.columns else "prob_up"
         cols = [c for c in ["date", "symbol", "close", "prob_up", "signal", "cost_adjusted_signal", "ensemble_score", "ensemble_signal", "market_regime", "net_edge_bps"] if c in sig.columns]
@@ -279,13 +315,31 @@ with tabs[6]:
         st.subheader("V8 CIO Recommended Portfolio")
         st.dataframe(port, use_container_width=True)
         if {"symbol", "target_weight"}.issubset(port.columns):
-            st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="V9 Target Weights"), use_container_width=True)
+            st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="V11 Target Weights"), use_container_width=True)
         opt_port = safe_read_csv(paths["v10_optimizer"])
         dyn_sizing = safe_read_csv(paths["v105_sizing"])
         stop_plan = safe_read_csv(paths["v105_stop"])
         if not opt_port.empty:
             st.subheader("V10.5 Optimized Portfolio")
             st.dataframe(opt_port, use_container_width=True)
+        v11_bl = safe_read_csv(paths["v11_bl_portfolio"])
+        v11_cross = safe_read_csv(paths["v11_cross_asset"])
+        v11_reb = safe_read_csv(paths["v11_rebalance"])
+        v11_attr = safe_read_csv(paths["v11_factor_attr"])
+        if not v11_bl.empty:
+            st.subheader("V11 Black-Litterman-lite Portfolio")
+            st.dataframe(v11_bl, use_container_width=True)
+            if {"symbol", "target_weight"}.issubset(v11_bl.columns):
+                st.plotly_chart(px.pie(v11_bl, names="symbol", values="target_weight", title="V11 Black-Litterman-lite Allocation"), use_container_width=True)
+        if not v11_cross.empty:
+            st.subheader("V11 Cross-Asset Allocation")
+            st.dataframe(v11_cross, use_container_width=True)
+        if not v11_reb.empty:
+            st.subheader("V11 Dynamic Rebalancing Plan")
+            st.dataframe(v11_reb, use_container_width=True)
+        if not v11_attr.empty:
+            st.subheader("V11 Portfolio Factor Attribution")
+            st.dataframe(v11_attr, use_container_width=True)
         if not dyn_sizing.empty:
             st.subheader("V10.5 Dynamic Position Sizing")
             st.dataframe(dyn_sizing, use_container_width=True)
@@ -299,17 +353,17 @@ with tabs[6]:
         equity = safe_read_csv(paths["v90_equity"])
         bt = safe_read_csv(paths["v90_backtest"])
         if not bt.empty:
-            st.subheader("V9 Institutional Backtest Summary")
+            st.subheader("V11 Institutional Backtest Summary")
             st.dataframe(bt, use_container_width=True)
         if not equity.empty and {"date", "equity_curve"}.issubset(equity.columns):
-            st.plotly_chart(px.line(equity, x="date", y="equity_curve", title="V9 Portfolio Equity Curve"), use_container_width=True)
+            st.plotly_chart(px.line(equity, x="date", y="equity_curve", title="V11 Portfolio Equity Curve"), use_container_width=True)
             if "drawdown" in equity.columns:
-                st.plotly_chart(px.area(equity, x="date", y="drawdown", title="V9 Portfolio Drawdown"), use_container_width=True)
+                st.plotly_chart(px.area(equity, x="date", y="drawdown", title="V11 Portfolio Drawdown"), use_container_width=True)
     elif not legacy.empty:
         st.subheader("Legacy Portfolio Construction")
         st.dataframe(legacy, use_container_width=True)
     else:
-        st.info("Run V8 model first.")
+        st.info("Run V11 model first.")
 
 with tabs[7]:
     st.header("Credit-Macro")
@@ -405,16 +459,16 @@ with tabs[10]:
     bt = safe_read_csv(paths["v90_backtest"])
     conf = safe_read_csv(paths["v90_confidence"])
     if not bt.empty:
-        st.subheader("V9 Portfolio Backtest Governance")
+        st.subheader("V11 Portfolio Backtest Governance")
         st.dataframe(bt, use_container_width=True)
     if not conf.empty:
-        st.subheader("V9 Confidence Governance")
+        st.subheader("V11 Confidence Governance")
         st.dataframe(conf, use_container_width=True)
     readiness = safe_read_csv(paths["v105_readiness"])
     cal_sum = safe_read_csv(paths["v10_cal_summary"])
     cal_curve = safe_read_csv(paths["v10_calibration"])
     if not readiness.empty:
-        st.subheader("V10.5 Institutional Readiness")
+        st.subheader("V11 Institutional Readiness")
         st.dataframe(readiness, use_container_width=True)
     if not cal_sum.empty:
         st.subheader("V10 Probability Calibration Summary")
