@@ -199,13 +199,15 @@ def run_all(
     else:
         opt_input = signals
     portfolio = optimize_portfolio(opt_input, risks, nav=nav)
-    kill = evaluate_kill_switch(risks)
     monitoring = monitor_model(ds, metrics, signals, run_id, MODELS/'baseline_features.parquet')
     xai = explain_model(ds, MODELS/'xgb_direction_model.joblib', DATA_PROCESSED/'feature_explainability.csv')
 
     # V5 institutional modules
     close_panel = ds.pivot_table(index='date', columns='symbol', values='close').ffill().dropna(how='all')
     returns_panel = close_panel.pct_change().dropna(how='all').fillna(0)
+    # V8.7: kill-switch is based on an equal-weight portfolio proxy, not the worst standalone asset.
+    portfolio_returns_for_gate = returns_panel.mean(axis=1) if not returns_panel.empty else None
+    kill = evaluate_kill_switch(risks, portfolio_returns=portfolio_returns_for_gate)
     if len(returns_panel.columns) >= 2:
         weights_rp = build_target_weights(returns_panel, method='risk_parity')
         weights_mvo = build_target_weights(returns_panel, method='mean_variance')
@@ -280,7 +282,7 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v8.6',
+        'v8.7',
         'CIO market intelligence, stock selection and portfolio decision-support engine',
         metrics=metrics,
         status=validation.get('model_status', 'Watch'),

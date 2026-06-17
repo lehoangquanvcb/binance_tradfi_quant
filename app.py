@@ -36,7 +36,7 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
 
 
 st.set_page_config(page_title="V8 CIO Market Intelligence Platform", layout="wide")
-st.title("V8 CIO Market Intelligence Platform")
+st.title("V8.7 CIO Market Intelligence Platform")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V8 model"):
-        with st.spinner(f"Running V8 CIO pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V8.7 model"):
+        with st.spinner(f"Running V8.7 CIO pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -235,12 +235,20 @@ with tabs[8]:
     st.header("Institutional Risk")
     risk = safe_read_csv(paths["risk"])
     if not risk.empty:
+        # V8.7: displayed kill-switch is portfolio-aware in pipeline. In the UI fallback,
+        # standalone asset risks create warnings instead of blocking the whole platform.
         kill = evaluate_kill_switch(risk)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Institutional Risk Score", f"{float(kill.get('institutional_risk_score', 0)):.1f}/100")
+        c2.metric("Risk Level", str(kill.get("risk_level", "N/A")))
+        c3.metric("Trading Gate", "Allowed" if kill.get("allow_trading", True) else "Blocked")
         if kill.get("allow_trading", True):
-            st.success("Trading allowed: no hard breach detected.")
+            st.success("Trading allowed: no portfolio-level hard breach detected.")
         else:
             st.error("Trading blocked by kill switch.")
             st.write(kill.get("breaches", []))
+        if kill.get("warnings"):
+            st.warning("Risk warnings: " + " | ".join(kill.get("warnings", [])))
         st.dataframe(risk, use_container_width=True)
     inst = safe_read_csv(paths["v5_inst_risk"])
     stress = safe_read_csv(paths["v5_stress"])
