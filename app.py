@@ -35,8 +35,8 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
         st.dataframe(df, use_container_width=True)
 
 
-st.set_page_config(page_title="V11 Institutional Portfolio Manager", layout="wide")
-st.title("V11 Institutional Portfolio Manager")
+st.set_page_config(page_title="V11.5 Production Portfolio Manager", layout="wide")
+st.title("V11.5 Production Portfolio Manager")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V11 model"):
-        with st.spinner(f"Running V11 Portfolio Manager pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V11.5 model"):
+        with st.spinner(f"Running V11.5 Production Portfolio Manager pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -109,6 +109,11 @@ paths = {
     "v11_rebalance": DATA_PROCESSED / "v11_dynamic_rebalance.csv",
     "v11_factor_attr": DATA_PROCESSED / "v11_factor_attribution.csv",
     "v11_regime_forecast": DATA_PROCESSED / "v11_regime_forecast.csv",
+    "v115_retraining": DATA_PROCESSED / "v115_adaptive_retraining.csv",
+    "v115_sector_strength": DATA_PROCESSED / "v115_sector_strength.csv",
+    "v115_regime_probability": DATA_PROCESSED / "v115_regime_probability.csv",
+    "v115_ensemble": DATA_PROCESSED / "v115_ensemble.csv",
+    "v115_portfolio": DATA_PROCESSED / "v115_optimized_portfolio.csv",
 }
 
 tabs = st.tabs([
@@ -151,7 +156,7 @@ with tabs[0]:
     v90_bt = safe_read_csv(paths["v90_backtest"])
     v90_prob = safe_read_csv(paths["v90_regime_prob"])
     if not v90_conf.empty or not v90_bt.empty or not v90_prob.empty:
-        st.subheader("V11 Institutional Portfolio Manager Metrics")
+        st.subheader("V11.5 Production Portfolio Manager Metrics")
         c1, c2, c3, c4 = st.columns(4)
         if not v90_conf.empty:
             row = v90_conf.tail(1).iloc[0]
@@ -211,13 +216,27 @@ with tabs[0]:
         else:
             st.success("No major exit candidates generated.")
         st.subheader("Recommended Portfolio")
-        opt_port = safe_read_csv(paths["v10_optimizer"])
-        if not opt_port.empty:
-            st.caption("V10.5 optimized portfolio with risk caps and cash buffer")
-            st.dataframe(opt_port, use_container_width=True)
-            if {"symbol", "target_weight"}.issubset(opt_port.columns):
-                st.plotly_chart(px.pie(opt_port, names="symbol", values="target_weight", title="V10.5 Optimized Allocation"), use_container_width=True)
-        elif not port.empty:
+        v115_portfolio = safe_read_csv(paths.get("v115_portfolio"))
+        v115_ensemble = safe_read_csv(paths.get("v115_ensemble"))
+        v115_retraining = safe_read_csv(paths.get("v115_retraining"))
+        if not v115_retraining.empty:
+            st.caption(f"V11.5 retraining action: {v115_retraining.iloc[0].get('retraining_action', 'N/A')}")
+        if not v115_ensemble.empty:
+            st.subheader("V11.5 Top Ensemble Ideas")
+            st.dataframe(v115_ensemble.head(10), use_container_width=True)
+        if not v115_portfolio.empty:
+            st.caption("V11.5 robust optimized portfolio with drift-aware risk caps")
+            st.dataframe(v115_portfolio, use_container_width=True)
+            if {"symbol", "target_weight"}.issubset(v115_portfolio.columns):
+                st.plotly_chart(px.pie(v115_portfolio, names="symbol", values="target_weight", title="V11.5 Robust Optimized Allocation"), use_container_width=True)
+        else:
+            opt_port = safe_read_csv(paths["v10_optimizer"])
+            if not opt_port.empty:
+                st.caption("V10.5 optimized portfolio with risk caps and cash buffer")
+                st.dataframe(opt_port, use_container_width=True)
+                if {"symbol", "target_weight"}.issubset(opt_port.columns):
+                    st.plotly_chart(px.pie(opt_port, names="symbol", values="target_weight", title="V10.5 Optimized Allocation"), use_container_width=True)
+        if v115_portfolio.empty and opt_port.empty and not port.empty:
             st.dataframe(port, use_container_width=True)
             if {"symbol", "target_weight"}.issubset(port.columns):
                 st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="CIO Recommended Allocation"), use_container_width=True)
@@ -473,5 +492,18 @@ with tabs[10]:
     if not cal_sum.empty:
         st.subheader("V10 Probability Calibration Summary")
         st.dataframe(cal_sum, use_container_width=True)
+
+        v115_retraining = safe_read_csv(paths.get("v115_retraining"))
+        v115_regprob = safe_read_csv(paths.get("v115_regime_probability"))
+        v115_sector = safe_read_csv(paths.get("v115_sector_strength"))
+        if not v115_retraining.empty:
+            st.subheader("V11.5 Adaptive Retraining")
+            st.dataframe(v115_retraining, use_container_width=True)
+        if not v115_regprob.empty:
+            st.subheader("V11.5 Regime Probability Forecast")
+            st.dataframe(v115_regprob, use_container_width=True)
+        if not v115_sector.empty:
+            st.subheader("V11.5 Sector Relative Strength")
+            st.dataframe(v115_sector, use_container_width=True)
     if not cal_curve.empty and {"avg_pred", "realized"}.issubset(cal_curve.columns):
         st.plotly_chart(px.line(cal_curve, x="avg_pred", y="realized", markers=True, title="Reliability Curve"), use_container_width=True)

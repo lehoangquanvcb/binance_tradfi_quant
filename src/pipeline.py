@@ -62,6 +62,11 @@ from .cross_asset_allocation_v11 import build_cross_asset_allocation
 from .factor_attribution_v11 import build_factor_attribution
 from .black_litterman_optimizer_v11 import build_black_litterman_portfolio
 from .regime_forecast_v11 import build_regime_forecast
+from .adaptive_retraining import build_adaptive_retraining_plan
+from .ensemble_v11_5 import build_v115_ensemble
+from .regime_probability_v11_5 import build_regime_probability_forecast
+from .sector_strength_v11_5 import build_sector_strength
+from .portfolio_optimizer_v11_5 import build_v115_portfolio_optimizer
 
 
 def load_cfg():
@@ -327,6 +332,13 @@ def run_all(
     v11_factor_attribution = build_factor_attribution(v11_black_litterman_portfolio if not v11_black_litterman_portfolio.empty else v10_optimized_portfolio, ds, factors)
     v11_regime_forecast = build_regime_forecast(market_regime_v8, macro_credit)
 
+    # V11.5 Production Upgrade: drift response, sector strength, ensemble and robust portfolio optimizer.
+    v115_retraining_plan = build_adaptive_retraining_plan(monitoring, metrics, v105_readiness)
+    v115_sector_strength = build_sector_strength(close_panel)
+    v115_regime_probability = build_regime_probability_forecast(market_regime_v8, macro_credit)
+    v115_ensemble = build_v115_ensemble(stock_selection_v8, v10_alpha_attribution, v115_sector_strength)
+    v115_optimized_portfolio = build_v115_portfolio_optimizer(v115_ensemble, returns_panel, nav=nav, max_weight=0.12, cash_buffer=0.10)
+
     validation = validation_check({
         'auc': metrics.get('auc', 0.0),
         'accuracy': metrics.get('accuracy', 0.0),
@@ -336,8 +348,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v11.0',
-        'V11 institutional portfolio manager: ETF rotation, dynamic rebalancing, cross-asset allocation, factor attribution and regime forecasts',
+        'v11.5',
+        'V11.5 production portfolio manager: adaptive retraining, ensemble voting, sector strength and robust portfolio optimization',
         metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
@@ -390,6 +402,11 @@ def run_all(
     v11_dynamic_rebalance.to_csv(DATA_PROCESSED/'v11_dynamic_rebalance.csv', index=False)
     v11_factor_attribution.to_csv(DATA_PROCESSED/'v11_factor_attribution.csv', index=False)
     v11_regime_forecast.to_csv(DATA_PROCESSED/'v11_regime_forecast.csv', index=False)
+    v115_retraining_plan.to_csv(DATA_PROCESSED/'v115_adaptive_retraining.csv', index=False)
+    v115_sector_strength.to_csv(DATA_PROCESSED/'v115_sector_strength.csv', index=False)
+    v115_regime_probability.to_csv(DATA_PROCESSED/'v115_regime_probability.csv', index=False)
+    v115_ensemble.to_csv(DATA_PROCESSED/'v115_ensemble.csv', index=False)
+    v115_optimized_portfolio.to_csv(DATA_PROCESSED/'v115_optimized_portfolio.csv', index=False)
     v9_appendix = (
         f"\n\n### V9.0 Institutional Metrics\n"
         f"- Portfolio Sharpe: {v9_backtest_metrics.get('sharpe', 0.0):.2f}\n"
@@ -399,6 +416,7 @@ def run_all(
         f"- V10.5 Institutional Readiness: {float(v105_readiness.iloc[0].get('institutional_readiness_score', 0.0)):.1f}/100 ({v105_readiness.iloc[0].get('readiness_label', 'N/A')})\n"
         f"- Calibration Status: {v10_calibration_summary.get('status', 'N/A')}\n"
         f"- V11 Portfolio Layer: ETF rotation, cross-asset allocation, factor attribution and rebalancing plan generated.\n"
+        f"- V11.5 Production Layer: adaptive retraining={v115_retraining_plan.iloc[0].get('retraining_action', 'N/A') if not v115_retraining_plan.empty else 'N/A'}, robust optimizer generated.\n"
     )
     cio_summary_v8 = cio_summary_v8 + v9_appendix
     (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')
