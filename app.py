@@ -35,8 +35,8 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
         st.dataframe(df, use_container_width=True)
 
 
-st.set_page_config(page_title="V8 CIO Market Intelligence Platform", layout="wide")
-st.title("V8.7 CIO Market Intelligence Platform")
+st.set_page_config(page_title="V9 CIO Workstation", layout="wide")
+st.title("V9.0 Institutional CIO Workstation")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V8.7 model"):
-        with st.spinner(f"Running V8.7 CIO pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V9.0 model"):
+        with st.spinner(f"Running V9.0 CIO pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -88,6 +88,11 @@ paths = {
     "v8_exit": DATA_PROCESSED / "v8_exit_watchlist.csv",
     "v8_portfolio": DATA_PROCESSED / "v8_portfolio_recommendation.csv",
     "v8_summary": DATA_PROCESSED / "v8_cio_summary.txt",
+    "v90_equity": DATA_PROCESSED / "v90_institutional_backtest.csv",
+    "v90_backtest": DATA_PROCESSED / "v90_backtest_summary.csv",
+    "v90_sizing": DATA_PROCESSED / "v90_position_sizing.csv",
+    "v90_regime_prob": DATA_PROCESSED / "v90_regime_probability.csv",
+    "v90_confidence": DATA_PROCESSED / "v90_confidence_score.csv",
 }
 
 tabs = st.tabs([
@@ -124,7 +129,24 @@ with tabs[0]:
         c3.metric("Equity Weight", f"{float(latest.get('recommended_equity_weight', 0)):.0%}")
         c4.metric("Cash Weight", f"{float(latest.get('recommended_cash_weight', 0)):.0%}")
     else:
-        st.info("Run V8 model to populate CIO dashboard.")
+        st.info("Run V9 model to populate CIO dashboard.")
+
+    v90_conf = safe_read_csv(paths["v90_confidence"])
+    v90_bt = safe_read_csv(paths["v90_backtest"])
+    v90_prob = safe_read_csv(paths["v90_regime_prob"])
+    if not v90_conf.empty or not v90_bt.empty or not v90_prob.empty:
+        st.subheader("V9 Institutional CIO Metrics")
+        c1, c2, c3, c4 = st.columns(4)
+        if not v90_conf.empty:
+            row = v90_conf.tail(1).iloc[0]
+            c1.metric("CIO Confidence", f"{float(row.get('confidence_score', 0)):.1f}/100", str(row.get('confidence_label', 'N/A')))
+        if not v90_prob.empty:
+            row = v90_prob.tail(1).iloc[0]
+            c2.metric("Risk-On Probability", f"{float(row.get('risk_on_prob', 0)):.0%}")
+            c3.metric("Risk-Off Probability", f"{float(row.get('risk_off_prob', 0)):.0%}")
+        if not v90_bt.empty:
+            row = v90_bt.tail(1).iloc[0]
+            c4.metric("Portfolio Sharpe", f"{float(row.get('sharpe', 0)):.2f}")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -206,7 +228,20 @@ with tabs[6]:
         st.subheader("V8 CIO Recommended Portfolio")
         st.dataframe(port, use_container_width=True)
         if {"symbol", "target_weight"}.issubset(port.columns):
-            st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="V8 Target Weights"), use_container_width=True)
+            st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="V9 Target Weights"), use_container_width=True)
+        sizing = safe_read_csv(paths["v90_sizing"])
+        if not sizing.empty:
+            st.subheader("V9 Position Sizing")
+            st.dataframe(sizing, use_container_width=True)
+        equity = safe_read_csv(paths["v90_equity"])
+        bt = safe_read_csv(paths["v90_backtest"])
+        if not bt.empty:
+            st.subheader("V9 Institutional Backtest Summary")
+            st.dataframe(bt, use_container_width=True)
+        if not equity.empty and {"date", "equity_curve"}.issubset(equity.columns):
+            st.plotly_chart(px.line(equity, x="date", y="equity_curve", title="V9 Portfolio Equity Curve"), use_container_width=True)
+            if "drawdown" in equity.columns:
+                st.plotly_chart(px.area(equity, x="date", y="drawdown", title="V9 Portfolio Drawdown"), use_container_width=True)
     elif not legacy.empty:
         st.subheader("Legacy Portfolio Construction")
         st.dataframe(legacy, use_container_width=True)
@@ -304,3 +339,11 @@ with tabs[10]:
     if not monitoring.empty:
         st.subheader("Monitoring")
         st.dataframe(monitoring, use_container_width=True)
+    bt = safe_read_csv(paths["v90_backtest"])
+    conf = safe_read_csv(paths["v90_confidence"])
+    if not bt.empty:
+        st.subheader("V9 Portfolio Backtest Governance")
+        st.dataframe(bt, use_container_width=True)
+    if not conf.empty:
+        st.subheader("V9 Confidence Governance")
+        st.dataframe(conf, use_container_width=True)

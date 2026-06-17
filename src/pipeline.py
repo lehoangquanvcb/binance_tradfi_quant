@@ -42,6 +42,10 @@ from .market_timing import build_market_timing
 from .sector_rotation import build_sector_rotation
 from .stock_ranking import build_stock_ranking
 from .exit_engine import build_exit_watchlist
+from .institutional_backtest import build_v9_backtest
+from .position_sizing import build_position_sizing
+from .confidence_engine import build_confidence_score
+from .regime_probability import build_regime_probabilities
 
 
 def load_cfg():
@@ -271,20 +275,24 @@ def run_all(
         f"equity risk score={equity_score:.1f}, "
         f"credit stress score={credit_score:.1f}."
     )
+    # V9.0 institutional CIO workstation layer: portfolio backtest, sizing, confidence, regime probabilities.
+    v9_equity_curve, v9_backtest_metrics = build_v9_backtest(close_panel, portfolio_recommendation_v8)
+    v9_position_sizing = build_position_sizing(stock_selection_v8, nav=nav, risk_pct=0.01)
+    v9_regime_probability = build_regime_probabilities(market_regime_v8)
+    v9_confidence = build_confidence_score(metrics, monitoring, market_regime_v8, v9_backtest_metrics)
+
     validation = validation_check({
         'auc': metrics.get('auc', 0.0),
         'accuracy': metrics.get('accuracy', 0.0),
         'hit_rate': metrics.get('accuracy', 0.0),
-        # Full P&L Sharpe/drawdown are only available when a real walk-forward
-        # backtest is run. Keep them conservative by default.
-        'sharpe': 0.0,
-        'max_drawdown': 1.0,
+        'sharpe': v9_backtest_metrics.get('sharpe', 0.0),
+        'max_drawdown': v9_backtest_metrics.get('max_drawdown', 1.0),
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v8.8',
-        'V8.8 alpha-enhanced CIO market intelligence and portfolio decision-support engine',
-        metrics=metrics,
+        'v9.0',
+        'V9.0 institutional CIO workstation: alpha engine, portfolio backtest, regime probability and confidence scoring',
+        metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
 
@@ -315,6 +323,19 @@ def run_all(
     stock_selection_v8.to_csv(DATA_PROCESSED/'v8_stock_selection.csv', index=False)
     exit_watchlist_v8.to_csv(DATA_PROCESSED/'v8_exit_watchlist.csv', index=False)
     portfolio_recommendation_v8.to_csv(DATA_PROCESSED/'v8_portfolio_recommendation.csv', index=False)
+    v9_equity_curve.to_csv(DATA_PROCESSED/'v90_institutional_backtest.csv', index=False)
+    pd.DataFrame([v9_backtest_metrics]).to_csv(DATA_PROCESSED/'v90_backtest_summary.csv', index=False)
+    v9_position_sizing.to_csv(DATA_PROCESSED/'v90_position_sizing.csv', index=False)
+    v9_regime_probability.to_csv(DATA_PROCESSED/'v90_regime_probability.csv', index=False)
+    v9_confidence.to_csv(DATA_PROCESSED/'v90_confidence_score.csv', index=False)
+    v9_appendix = (
+        f"\n\n### V9.0 Institutional Metrics\n"
+        f"- Portfolio Sharpe: {v9_backtest_metrics.get('sharpe', 0.0):.2f}\n"
+        f"- Portfolio CAGR: {v9_backtest_metrics.get('cagr', 0.0):.2%}\n"
+        f"- Max Drawdown: {v9_backtest_metrics.get('max_drawdown', 0.0):.2%}\n"
+        f"- Confidence: {float(v9_confidence.iloc[0].get('confidence_score', 0.0)):.1f}/100 ({v9_confidence.iloc[0].get('confidence_label', 'N/A')})\n"
+    )
+    cio_summary_v8 = cio_summary_v8 + v9_appendix
     (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')
     (DATA_PROCESSED/'v5_ai_research_note.txt').write_text(research_note + "\n\n" + cio_summary_v8, encoding='utf-8')
     pd.DataFrame([gov_rec]).to_csv(DATA_PROCESSED/'v5_model_governance_latest.csv', index=False)
