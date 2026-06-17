@@ -282,8 +282,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v8.7',
-        'CIO market intelligence, stock selection and portfolio decision-support engine',
+        'v8.8',
+        'V8.8 alpha-enhanced CIO market intelligence and portfolio decision-support engine',
         metrics=metrics,
         status=validation.get('model_status', 'Watch'),
     )

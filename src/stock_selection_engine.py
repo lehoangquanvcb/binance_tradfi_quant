@@ -73,6 +73,13 @@ def build_stock_selection_v8(signals: pd.DataFrame, close_panel: pd.DataFrame, s
         sector_score = float(sector_scores.get(sector_bucket, sector_scores.get(sym, 50.0)))
         sector_action = str(sector_actions.get(sector_bucket, sector_actions.get(sym, "NEUTRAL")))
 
+        # V8.8 alpha overlay: reward cross-sectional momentum/defensive quality
+        # features created in features.py when they are available in the latest signal row.
+        cs_mom = float(r.get('cs_momentum_composite', 0.5) or 0.5)
+        cs_def = float(r.get('cs_defensive_score', 0.5) or 0.5)
+        rs_rank = float(r.get('rs_rank_60d', r.get('relative_strength_rank_60d', 0.5)) or 0.5)
+        alpha_overlay = 10.0 * (cs_mom - 0.5) + 5.0 * (rs_rank - 0.5) + 3.0 * (cs_def - 0.5)
+
         macro_adj = 0.0
         if regime in {"RISK_ON", "RECOVERY"}:
             macro_adj += 5.0
@@ -93,6 +100,7 @@ def build_stock_selection_v8(signals: pd.DataFrame, close_panel: pd.DataFrame, s
             + 0.05 * regime_score
             + 0.05 * (100 - _score(vol60, 0.35))
             + macro_adj
+            + alpha_overlay
         )
         if not trend_ok:
             score -= 8
@@ -127,6 +135,9 @@ def build_stock_selection_v8(signals: pd.DataFrame, close_panel: pd.DataFrame, s
             "sector_action": sector_action,
             "market_regime": regime,
             "stock_score": round(score, 2),
+            "alpha_overlay": round(alpha_overlay, 2),
+            "cs_momentum_composite": round(cs_mom, 4),
+            "cs_defensive_score": round(cs_def, 4),
             "decision": decision,
         })
     out = pd.DataFrame(rows).sort_values("stock_score", ascending=False)
