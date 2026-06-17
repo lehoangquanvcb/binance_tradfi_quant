@@ -47,6 +47,16 @@ from .position_sizing import build_position_sizing
 from .confidence_engine import build_confidence_score
 from .regime_probability import build_regime_probabilities
 
+from .alpha_attribution import build_alpha_attribution
+from .probability_calibration import calibration_report
+from .portfolio_optimizer import build_optimized_portfolio
+from .regime_transition_matrix import build_regime_transition_matrix
+from .sector_allocation_engine import build_sector_allocation
+from .dynamic_position_sizing import build_dynamic_position_sizing
+from .stop_loss_optimizer import build_stop_loss_plan
+from .institutional_readiness import build_institutional_readiness
+from .ensemble_voting_engine import build_cio_ensemble_vote
+
 
 def load_cfg():
     return yaml.safe_load(open(ROOT/'config'/'symbols.yaml', encoding='utf-8'))
@@ -281,6 +291,28 @@ def run_all(
     v9_regime_probability = build_regime_probabilities(market_regime_v8)
     v9_confidence = build_confidence_score(metrics, monitoring, market_regime_v8, v9_backtest_metrics)
 
+    # V10.0/V10.5 institutional CIO enhancement layer.
+    latest_regime_dict = market_regime_v8.tail(1).iloc[0].to_dict() if market_regime_v8 is not None and not market_regime_v8.empty else {}
+    v10_alpha_attribution = build_alpha_attribution(stock_selection_v8, sector_rotation_v8, latest_regime_dict)
+    v10_optimized_portfolio = build_optimized_portfolio(v10_alpha_attribution if not v10_alpha_attribution.empty else stock_selection_v8, nav=nav)
+    v10_regime_transition = build_regime_transition_matrix(market_regime_v8, regime_col='market_regime')
+    equity_budget = float(latest_regime_dict.get('recommended_equity_weight', 0.90) or 0.90)
+    v10_sector_allocation = build_sector_allocation(sector_rotation_v8, equity_budget=equity_budget)
+    # Calibration uses latest available probabilities when targets exist; it degrades gracefully if unavailable.
+    cal_source = ds.merge(signals[['symbol','prob_up']], on='symbol', how='left') if 'symbol' in ds.columns and 'symbol' in signals.columns and 'prob_up' in signals.columns else ds
+    v10_calibration_curve, v10_calibration_summary = calibration_report(cal_source, prob_col='prob_up', target_col='target_up_1d')
+
+    v105_cio_vote = build_cio_ensemble_vote(stock_selection_v8, v10_alpha_attribution)
+    v105_dynamic_sizing = build_dynamic_position_sizing(
+        stock_selection_v8.merge(v105_cio_vote[['symbol','cio_vote_score','cio_vote']], on='symbol', how='left') if not v105_cio_vote.empty else stock_selection_v8,
+        nav=nav,
+        confidence=v9_confidence,
+        regime=latest_regime_dict,
+        base_risk_pct=0.01,
+    )
+    v105_stop_plan = build_stop_loss_plan(stock_selection_v8, ds, sizing=v105_dynamic_sizing)
+    v105_readiness = build_institutional_readiness(metrics, v9_backtest_metrics, confidence=v9_confidence, monitoring=monitoring)
+
     validation = validation_check({
         'auc': metrics.get('auc', 0.0),
         'accuracy': metrics.get('accuracy', 0.0),
@@ -290,8 +322,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v9.0',
-        'V9.0 institutional CIO workstation: alpha engine, portfolio backtest, regime probability and confidence scoring',
+        'v10.5',
+        'V10.5 institutional CIO workstation: alpha attribution, dynamic sizing, stop optimizer and readiness scoring',
         metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
@@ -328,12 +360,24 @@ def run_all(
     v9_position_sizing.to_csv(DATA_PROCESSED/'v90_position_sizing.csv', index=False)
     v9_regime_probability.to_csv(DATA_PROCESSED/'v90_regime_probability.csv', index=False)
     v9_confidence.to_csv(DATA_PROCESSED/'v90_confidence_score.csv', index=False)
+    v10_alpha_attribution.to_csv(DATA_PROCESSED/'v10_alpha_attribution.csv', index=False)
+    v10_optimized_portfolio.to_csv(DATA_PROCESSED/'v10_optimized_portfolio.csv', index=False)
+    v10_regime_transition.to_csv(DATA_PROCESSED/'v10_regime_transition_matrix.csv', index=False)
+    v10_sector_allocation.to_csv(DATA_PROCESSED/'v10_sector_allocation.csv', index=False)
+    v10_calibration_curve.to_csv(DATA_PROCESSED/'v10_probability_calibration.csv', index=False)
+    pd.DataFrame([v10_calibration_summary]).to_csv(DATA_PROCESSED/'v10_calibration_summary.csv', index=False)
+    v105_cio_vote.to_csv(DATA_PROCESSED/'v105_cio_vote.csv', index=False)
+    v105_dynamic_sizing.to_csv(DATA_PROCESSED/'v105_dynamic_position_sizing.csv', index=False)
+    v105_stop_plan.to_csv(DATA_PROCESSED/'v105_stop_loss_plan.csv', index=False)
+    v105_readiness.to_csv(DATA_PROCESSED/'v105_institutional_readiness.csv', index=False)
     v9_appendix = (
         f"\n\n### V9.0 Institutional Metrics\n"
         f"- Portfolio Sharpe: {v9_backtest_metrics.get('sharpe', 0.0):.2f}\n"
         f"- Portfolio CAGR: {v9_backtest_metrics.get('cagr', 0.0):.2%}\n"
         f"- Max Drawdown: {v9_backtest_metrics.get('max_drawdown', 0.0):.2%}\n"
         f"- Confidence: {float(v9_confidence.iloc[0].get('confidence_score', 0.0)):.1f}/100 ({v9_confidence.iloc[0].get('confidence_label', 'N/A')})\n"
+        f"- V10.5 Institutional Readiness: {float(v105_readiness.iloc[0].get('institutional_readiness_score', 0.0)):.1f}/100 ({v105_readiness.iloc[0].get('readiness_label', 'N/A')})\n"
+        f"- Calibration Status: {v10_calibration_summary.get('status', 'N/A')}\n"
     )
     cio_summary_v8 = cio_summary_v8 + v9_appendix
     (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')
