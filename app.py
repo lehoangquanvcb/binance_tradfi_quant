@@ -114,7 +114,7 @@ with tabs[0]:
     port = safe_read_csv(paths["v8_portfolio"])
 
     if summary:
-        st.info(summary)
+        st.markdown(summary)
 
     if not regime.empty:
         latest = regime.sort_values("date").tail(1).iloc[0]
@@ -145,6 +145,8 @@ with tabs[0]:
         st.subheader("Recommended Portfolio")
         if not port.empty:
             st.dataframe(port, use_container_width=True)
+            if {"symbol", "target_weight"}.issubset(port.columns):
+                st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="CIO Recommended Allocation"), use_container_width=True)
 
 with tabs[1]:
     st.header("Market Regime Engine")
@@ -273,7 +275,21 @@ with tabs[10]:
     monitoring = safe_read_csv(paths["monitoring"])
     if not gov.empty:
         st.subheader("Model Inventory")
+        latest_gov = gov.tail(1).iloc[0]
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Governance Status", str(latest_gov.get("status", "N/A")))
+        c2.metric("Model Version", str(latest_gov.get("version", "N/A")))
+        c3.metric("Owner", str(latest_gov.get("owner", "N/A")))
         st.dataframe(gov, use_container_width=True)
+        status = str(latest_gov.get("status", ""))
+        if status == "Champion":
+            st.success("Champion: approved for live use under current governance rules.")
+        elif status == "Candidate":
+            st.info("Candidate: acceptable for research / paper trading, but not approved for live trading.")
+        elif status == "Watch":
+            st.warning("Watch: useful signal, but not enough governance evidence for portfolio deployment.")
+        else:
+            st.warning("Research: exploratory model only.")
     if not validation.empty:
         st.subheader("Validation")
         st.dataframe(validation, use_container_width=True)

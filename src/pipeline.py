@@ -269,8 +269,22 @@ def run_all(
         f"equity risk score={equity_score:.1f}, "
         f"credit stress score={credit_score:.1f}."
     )
-    gov_rec = register_model('xgb_direction_model', 'v5', 'TradFi direction forecasting and portfolio signal generation', metrics=metrics)
-    validation = validation_check({'sharpe':0.0,'max_drawdown':1.0,'hit_rate':metrics.get('accuracy',0.0)})
+    validation = validation_check({
+        'auc': metrics.get('auc', 0.0),
+        'accuracy': metrics.get('accuracy', 0.0),
+        'hit_rate': metrics.get('accuracy', 0.0),
+        # Full P&L Sharpe/drawdown are only available when a real walk-forward
+        # backtest is run. Keep them conservative by default.
+        'sharpe': 0.0,
+        'max_drawdown': 1.0,
+    })
+    gov_rec = register_model(
+        'xgb_direction_model',
+        'v8.6',
+        'CIO market intelligence, stock selection and portfolio decision-support engine',
+        metrics=metrics,
+        status=validation.get('model_status', 'Watch'),
+    )
 
     v5_weights = pd.concat([
         weights_rp.rename('risk_parity'), weights_mvo.rename('mean_variance'),
