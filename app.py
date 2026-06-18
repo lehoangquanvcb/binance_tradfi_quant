@@ -145,164 +145,146 @@ tabs = st.tabs([
 
 with tabs[0]:
     st.header("CIO Dashboard")
+    st.caption("V14 executive view: market regime, risk budget, top ideas, exit watchlist, portfolio allocation and portfolio analytics only.")
+
     summary = safe_read_text(paths["v8_summary"])
     regime = safe_read_csv(paths["v8_regime"])
     sector = safe_read_csv(paths["v8_sector"])
     stock = safe_read_csv(paths["v8_stock"])
     exits = safe_read_csv(paths["v8_exit"])
-    port = safe_read_csv(paths["v8_portfolio"])
-
-    if summary:
-        st.markdown(summary)
-
-    if not regime.empty:
-        latest = regime.sort_values("date").tail(1).iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Market Regime", str(latest.get("market_regime", "N/A")))
-        c2.metric("Regime Score", f"{float(latest.get('regime_score', 0)):.1f}/100")
-        c3.metric("Equity Weight", f"{float(latest.get('recommended_equity_weight', 0)):.0%}")
-        c4.metric("Cash Weight", f"{float(latest.get('recommended_cash_weight', 0)):.0%}")
-    else:
-        st.info("Run V13 model to populate CIO dashboard.")
-
     v13_timing = safe_read_csv(paths.get("v13_timing"))
     v13_sector = safe_read_csv(paths.get("v13_sector"))
     v13_stock = safe_read_csv(paths.get("v13_stock"))
     v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
     v13_attr = safe_read_csv(paths.get("v13_attribution"))
-    if not v13_timing.empty or not v13_sector.empty or not v13_stock.empty or not v13_portfolio.empty:
-        st.subheader("V13 Institutional Alpha Engine")
-        if not v13_timing.empty:
-            t = v13_timing.tail(1).iloc[0]
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Market Timing", str(t.get("market_timing_signal", "N/A")))
-            c2.metric("Timing Score", f"{float(t.get('market_timing_score', 0)):.1f}/100")
-            c3.metric("Target Equity", f"{float(t.get('target_equity_weight', 0)):.0%}")
-            c4.metric("Target Cash", f"{float(t.get('target_cash_weight', 0)):.0%}")
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            st.markdown("**Top V13 Sectors**")
-            if not v13_sector.empty:
-                st.dataframe(v13_sector.head(8), use_container_width=True)
-            st.markdown("**Top V13 Stock Alpha Ideas**")
-            if not v13_stock.empty:
-                cols = [c for c in ["rank", "symbol", "v13_alpha_score", "v13_decision", "sector_bucket", "market_regime", "score_explanation"] if c in v13_stock.columns]
-                st.dataframe(v13_stock[cols].head(12), use_container_width=True)
-        with cc2:
-            st.markdown("**V13 Portfolio Construction**")
-            if not v13_portfolio.empty:
-                st.dataframe(v13_portfolio, use_container_width=True)
-                if {"symbol", "target_weight"}.issubset(v13_portfolio.columns):
-                    st.plotly_chart(px.pie(v13_portfolio, names="symbol", values="target_weight", title="V13 Risk-Budgeted Portfolio"), use_container_width=True)
-            st.markdown("**V13 Performance Attribution**")
-            if not v13_attr.empty:
-                st.dataframe(v13_attr.head(12), use_container_width=True)
-
     v90_conf = safe_read_csv(paths["v90_confidence"])
     v90_bt = safe_read_csv(paths["v90_backtest"])
     v90_prob = safe_read_csv(paths["v90_regime_prob"])
-    if not v90_conf.empty or not v90_bt.empty or not v90_prob.empty:
-        st.subheader("V13 Institutional Alpha Engine Metrics")
-        c1, c2, c3, c4 = st.columns(4)
-        if not v90_conf.empty:
-            row = v90_conf.tail(1).iloc[0]
-            c1.metric("CIO Confidence", f"{float(row.get('confidence_score', 0)):.1f}/100", str(row.get('confidence_label', 'N/A')))
-        if not v90_prob.empty:
-            row = v90_prob.tail(1).iloc[0]
-            c2.metric("Risk-On Probability", f"{float(row.get('risk_on_prob', 0)):.0%}")
-            c3.metric("Risk-Off Probability", f"{float(row.get('risk_off_prob', 0)):.0%}")
-        if not v90_bt.empty:
-            row = v90_bt.tail(1).iloc[0]
-            c4.metric("Portfolio Sharpe", f"{float(row.get('sharpe', 0)):.2f}")
-
-
-    v14_analytics = safe_read_csv(paths.get("v14_analytics"))
-    v14_risk_contrib = safe_read_csv(paths.get("v14_risk_contrib"))
-    if not v14_analytics.empty:
-        st.subheader("V14 Portfolio Analytics")
-        row = v14_analytics.tail(1).iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Portfolio Volatility", f"{float(row.get('portfolio_vol_annual', 0)):.2%}")
-        c2.metric("Top 10 Weight", f"{float(row.get('top10_weight', 0)):.0%}")
-        c3.metric("Sector Concentration", f"{float(row.get('sector_hhi', 0)):.2f}", str(row.get('concentration_label', 'N/A')))
-        c4.metric("Largest Risk Contributor", str(row.get('largest_risk_contributor', 'N/A')))
-    if not v14_risk_contrib.empty:
-        with st.expander("V14 Risk Contribution Detail", expanded=False):
-            st.dataframe(v14_risk_contrib.head(20), use_container_width=True)
-
     readiness = safe_read_csv(paths["v105_readiness"])
     cal_sum = safe_read_csv(paths["v10_cal_summary"])
-    if not readiness.empty or not cal_sum.empty:
-        st.subheader("Readiness & Calibration")
-        c1, c2, c3 = st.columns(3)
-        if not readiness.empty:
-            row = readiness.tail(1).iloc[0]
-            c1.metric("Institutional Readiness", f"{float(row.get('institutional_readiness_score', 0)):.1f}/100", str(row.get('readiness_label', 'N/A')))
-        if not cal_sum.empty:
-            row = cal_sum.tail(1).iloc[0]
-            c2.metric("Calibration", str(row.get('status', 'N/A')))
-            if pd.notna(row.get('calibration_error', None)):
-                c3.metric("Calibration Error", f"{float(row.get('calibration_error', 0)):.3f}")
+    v14_analytics = safe_read_csv(paths.get("v14_analytics"))
+    v14_risk_contrib = safe_read_csv(paths.get("v14_risk_contrib"))
 
-    v11_cross = safe_read_csv(paths["v11_cross_asset"])
-    v11_bl = safe_read_csv(paths["v11_bl_portfolio"])
-    v11_reb = safe_read_csv(paths["v11_rebalance"])
-    v11_fc = safe_read_csv(paths["v11_regime_forecast"])
-    if not v11_cross.empty or not v11_bl.empty or not v11_fc.empty:
-        st.subheader("Portfolio Manager Overlay")
-        c1, c2, c3 = st.columns(3)
-        if not v11_fc.empty:
-            r = v11_fc.iloc[0]
-            c1.metric("1M Risk-On Probability", f"{float(r.get('risk_on_prob', 0)):.0%}", str(r.get('expected_regime', 'N/A')))
-        if not v11_bl.empty and 'target_weight' in v11_bl.columns:
-            c2.metric("BL Portfolio Names", int(v11_bl['symbol'].nunique()))
-        if not v11_reb.empty:
-            c3.metric("Rebalance Trades", int((v11_reb.get('rebalance_action', pd.Series(dtype=str)) != 'HOLD').sum()))
+    st.subheader("CIO Morning Brief")
+    if summary:
+        # Keep only the short narrative part. Detailed version-history bullets are intentionally hidden in V14.
+        brief_lines = []
+        for line in summary.splitlines():
+            s = line.strip()
+            if not s:
+                continue
+            if s.startswith("###") or "V9.0" in s or "V10" in s or "V11" in s or "V12" in s or "V13.5 Alpha Layer" in s:
+                break
+            brief_lines.append(s)
+        st.markdown("\n\n".join(brief_lines[:8]) if brief_lines else summary)
+    else:
+        st.info("Run V14 model to generate CIO morning brief.")
 
-    c1, c2 = st.columns(2)
-    with c1:
+    c1, c2, c3, c4 = st.columns(4)
+    if not v13_timing.empty:
+        t = v13_timing.tail(1).iloc[0]
+        c1.metric("V14 Market Timing", str(t.get("market_timing_signal", "N/A")))
+        c2.metric("Timing Score", f"{float(t.get('market_timing_score', 0)):.1f}/100")
+        c3.metric("Target Equity", f"{float(t.get('target_equity_weight', 0)):.0%}")
+        c4.metric("Target Cash", f"{float(t.get('target_cash_weight', 0)):.0%}")
+    elif not regime.empty:
+        latest = regime.sort_values("date").tail(1).iloc[0]
+        c1.metric("Market Regime", str(latest.get("market_regime", "N/A")))
+        c2.metric("Regime Score", f"{float(latest.get('regime_score', 0)):.1f}/100")
+        c3.metric("Equity Weight", f"{float(latest.get('recommended_equity_weight', 0)):.0%}")
+        c4.metric("Cash Weight", f"{float(latest.get('recommended_cash_weight', 0)):.0%}")
+    else:
+        c1.metric("Market Regime", "N/A")
+        c2.metric("Score", "N/A")
+        c3.metric("Equity", "N/A")
+        c4.metric("Cash", "N/A")
+
+    st.divider()
+
+    m1, m2, m3, m4 = st.columns(4)
+    if not v90_conf.empty:
+        row = v90_conf.tail(1).iloc[0]
+        m1.metric("CIO Confidence", f"{float(row.get('confidence_score', 0)):.1f}/100", str(row.get("confidence_label", "N/A")))
+    if not v90_prob.empty:
+        row = v90_prob.tail(1).iloc[0]
+        m2.metric("Risk-On Probability", f"{float(row.get('risk_on_prob', 0)):.0%}")
+    if not v90_bt.empty:
+        row = v90_bt.tail(1).iloc[0]
+        m3.metric("Portfolio Sharpe", f"{float(row.get('sharpe', 0)):.2f}")
+        m4.metric("Max Drawdown", f"{float(row.get('max_drawdown', 0)):.2%}")
+    elif not v14_analytics.empty:
+        row = v14_analytics.tail(1).iloc[0]
+        m3.metric("Portfolio Volatility", f"{float(row.get('portfolio_vol_annual', 0)):.2%}")
+        m4.metric("Top 10 Weight", f"{float(row.get('top10_weight', 0)):.0%}")
+
+    c_left, c_right = st.columns(2)
+    with c_left:
         st.subheader("Top Sectors")
-        if not sector.empty:
-            cols = [c for c in ["rank", "symbol", "sector", "sector_score", "sector_action", "relative_strength_60d", "trend_strength"] if c in sector.columns]
-            st.dataframe(sector[cols].head(8), use_container_width=True)
+        sector_source = v13_sector if not v13_sector.empty else sector
+        if not sector_source.empty:
+            if "v13_sector_score" in sector_source.columns:
+                cols = [c for c in ["symbol", "sector", "v13_sector_score", "v13_action", "target_sector_weight"] if c in sector_source.columns]
+            else:
+                cols = [c for c in ["rank", "symbol", "sector", "sector_score", "sector_action", "relative_strength_60d"] if c in sector_source.columns]
+            st.dataframe(sector_source[cols].head(7), use_container_width=True)
+        else:
+            st.info("No sector rotation output yet.")
+
         st.subheader("Top Stock Ideas")
-        if not stock.empty:
-            cols = [c for c in ["rank", "symbol", "stock_score", "decision", "sector_bucket", "sector_action", "market_regime"] if c in stock.columns]
-            st.dataframe(stock[cols].head(12), use_container_width=True)
-    with c2:
+        stock_source = v13_stock if not v13_stock.empty else stock
+        if not stock_source.empty:
+            if "v13_alpha_score" in stock_source.columns:
+                cols = [c for c in ["rank", "symbol", "v13_alpha_score", "v13_decision", "sector_bucket", "market_regime"] if c in stock_source.columns]
+            else:
+                cols = [c for c in ["rank", "symbol", "stock_score", "decision", "sector_bucket", "market_regime"] if c in stock_source.columns]
+            st.dataframe(stock_source[cols].head(10), use_container_width=True)
+        else:
+            st.info("No stock ranking output yet.")
+
+    with c_right:
         st.subheader("Exit / Reduce Watchlist")
         if not exits.empty:
-            st.dataframe(exits.head(12), use_container_width=True)
+            cols = [c for c in ["symbol", "close", "stock_score", "exit_action", "severity", "reasons"] if c in exits.columns]
+            st.dataframe(exits[cols].head(10), use_container_width=True)
         else:
             st.success("No major exit candidates generated.")
+
         st.subheader("Recommended Portfolio")
-        v115_portfolio = safe_read_csv(paths.get("v115_portfolio"))
-        v115_ensemble = safe_read_csv(paths.get("v115_ensemble"))
-        v115_retraining = safe_read_csv(paths.get("v115_retraining"))
-        v12_portfolio = safe_read_csv(paths.get("v12_portfolio"))
-        v12_bayesian = safe_read_csv(paths.get("v12_bayesian"))
-        v12_retraining = safe_read_csv(paths.get("v12_retraining"))
-        if not v115_retraining.empty:
-            st.caption(f"V11.5 retraining action: {v115_retraining.iloc[0].get('retraining_action', 'N/A')}")
-        if not v115_ensemble.empty:
-            st.subheader("V11.5 Top Ensemble Ideas")
-            st.dataframe(v115_ensemble.head(10), use_container_width=True)
-        if not v115_portfolio.empty:
-            st.caption("V11.5 robust optimized portfolio with drift-aware risk caps")
-            st.dataframe(v115_portfolio, use_container_width=True)
-            if {"symbol", "target_weight"}.issubset(v115_portfolio.columns):
-                st.plotly_chart(px.pie(v115_portfolio, names="symbol", values="target_weight", title="V11.5 Robust Optimized Allocation"), use_container_width=True)
+        if not v13_portfolio.empty:
+            cols = [c for c in ["symbol", "target_weight", "target_usd", "decision", "v13_alpha_score", "rationale"] if c in v13_portfolio.columns]
+            st.dataframe(v13_portfolio[cols].head(15), use_container_width=True)
+            if {"symbol", "target_weight"}.issubset(v13_portfolio.columns):
+                st.plotly_chart(px.pie(v13_portfolio, names="symbol", values="target_weight", title="V14 / V13 Risk-Budgeted Allocation"), use_container_width=True)
         else:
-            opt_port = safe_read_csv(paths["v10_optimizer"])
-            if not opt_port.empty:
-                st.caption("V10.5 optimized portfolio with risk caps and cash buffer")
-                st.dataframe(opt_port, use_container_width=True)
-                if {"symbol", "target_weight"}.issubset(opt_port.columns):
-                    st.plotly_chart(px.pie(opt_port, names="symbol", values="target_weight", title="V10.5 Optimized Allocation"), use_container_width=True)
-        if v115_portfolio.empty and opt_port.empty and not port.empty:
-            st.dataframe(port, use_container_width=True)
-            if {"symbol", "target_weight"}.issubset(port.columns):
-                st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="CIO Recommended Allocation"), use_container_width=True)
+            fallback_port = safe_read_csv(paths.get("v115_portfolio"))
+            if not fallback_port.empty:
+                st.dataframe(fallback_port.head(15), use_container_width=True)
+            else:
+                st.info("No portfolio recommendation output yet.")
+
+    st.divider()
+    st.subheader("Portfolio Analytics")
+    a1, a2, a3, a4 = st.columns(4)
+    if not v14_analytics.empty:
+        row = v14_analytics.tail(1).iloc[0]
+        a1.metric("Portfolio Volatility", f"{float(row.get('portfolio_vol_annual', 0)):.2%}")
+        a2.metric("Top 10 Weight", f"{float(row.get('top10_weight', 0)):.0%}")
+        a3.metric("Sector Concentration", f"{float(row.get('sector_hhi', 0)):.2f}", str(row.get("concentration_label", "N/A")))
+        a4.metric("Largest Risk Contributor", str(row.get("largest_risk_contributor", "N/A")))
+        with st.expander("V14 portfolio analytics details", expanded=False):
+            st.dataframe(v14_analytics.tail(1), use_container_width=True)
+            if not v14_risk_contrib.empty:
+                st.dataframe(v14_risk_contrib.head(20), use_container_width=True)
+    else:
+        if not readiness.empty:
+            row = readiness.tail(1).iloc[0]
+            a1.metric("Institutional Readiness", f"{float(row.get('institutional_readiness_score', 0)):.1f}/100", str(row.get("readiness_label", "N/A")))
+        if not cal_sum.empty:
+            row = cal_sum.tail(1).iloc[0]
+            a2.metric("Calibration", str(row.get("status", "N/A")))
+            a3.metric("Calibration Error", f"{float(row.get('calibration_error', 0)):.3f}")
+        a4.metric("Portfolio Analytics", "Pending")
+
 
 with tabs[1]:
     st.header("Market Regime Engine")
@@ -404,81 +386,84 @@ with tabs[5]:
 
 with tabs[6]:
     st.header("Portfolio Recommendation & Analytics")
+    st.caption("V14 portfolio view: target allocation, risk contribution, performance attribution and compact legacy references.")
+
     v14_analytics = safe_read_csv(paths.get("v14_analytics"))
     v14_risk_contrib = safe_read_csv(paths.get("v14_risk_contrib"))
+    v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
+    v13_attr = safe_read_csv(paths.get("v13_attribution"))
+    v115_portfolio = safe_read_csv(paths.get("v115_portfolio"))
+    v11_bl = safe_read_csv(paths["v11_bl_portfolio"])
+    bt = safe_read_csv(paths["v90_backtest"])
+    equity = safe_read_csv(paths["v90_equity"])
+
     if not v14_analytics.empty:
         st.subheader("V14 Institutional Portfolio Analytics")
+        row = v14_analytics.tail(1).iloc[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Portfolio Volatility", f"{float(row.get('portfolio_vol_annual', 0)):.2%}")
+        c2.metric("Top 10 Weight", f"{float(row.get('top10_weight', 0)):.0%}")
+        c3.metric("Sector Concentration", f"{float(row.get('sector_hhi', 0)):.2f}", str(row.get("concentration_label", "N/A")))
+        c4.metric("Largest Risk Contributor", str(row.get("largest_risk_contributor", "N/A")))
         show_df(v14_analytics.tail(1), "No V14 portfolio analytics yet.")
+
     if not v14_risk_contrib.empty:
         st.subheader("V14 Risk Contribution")
         show_df(v14_risk_contrib.head(30), "No V14 risk contribution yet.")
         if {"symbol", "risk_contribution"}.issubset(v14_risk_contrib.columns):
             st.plotly_chart(px.bar(v14_risk_contrib.head(20).sort_values("risk_contribution"), x="risk_contribution", y="symbol", orientation="h", title="V14 Portfolio Risk Contribution"), use_container_width=True)
-    v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
-    v13_attr = safe_read_csv(paths.get("v13_attribution"))
+
     if not v13_portfolio.empty:
-        st.subheader("V13 Risk-Budgeted Portfolio")
-        st.dataframe(v13_portfolio, use_container_width=True)
+        st.subheader("V13/V14 Risk-Budgeted Portfolio")
+        cols = [c for c in ["symbol", "target_weight", "target_usd", "decision", "v13_alpha_score", "rationale"] if c in v13_portfolio.columns]
+        st.dataframe(v13_portfolio[cols], use_container_width=True)
         if {"symbol", "target_weight"}.issubset(v13_portfolio.columns):
-            st.plotly_chart(px.pie(v13_portfolio, names="symbol", values="target_weight", title="V13 Target Weights"), use_container_width=True)
-    if not v13_attr.empty:
-        st.subheader("V13 20-Day Performance Attribution")
-        st.dataframe(v13_attr, use_container_width=True)
-    port = safe_read_csv(paths["v8_portfolio"])
-    legacy = safe_read_csv(paths["v5_weights"])
-    if not port.empty:
-        st.subheader("V8 CIO Recommended Portfolio")
-        st.dataframe(port, use_container_width=True)
-        if {"symbol", "target_weight"}.issubset(port.columns):
-            st.plotly_chart(px.pie(port, names="symbol", values="target_weight", title="V11 Target Weights"), use_container_width=True)
-        opt_port = safe_read_csv(paths["v10_optimizer"])
-        dyn_sizing = safe_read_csv(paths["v105_sizing"])
-        stop_plan = safe_read_csv(paths["v105_stop"])
-        if not opt_port.empty:
-            st.subheader("V10.5 Optimized Portfolio")
-            st.dataframe(opt_port, use_container_width=True)
-        v11_bl = safe_read_csv(paths["v11_bl_portfolio"])
-        v11_cross = safe_read_csv(paths["v11_cross_asset"])
-        v11_reb = safe_read_csv(paths["v11_rebalance"])
-        v11_attr = safe_read_csv(paths["v11_factor_attr"])
-        if not v11_bl.empty:
-            st.subheader("V11 Black-Litterman-lite Portfolio")
-            st.dataframe(v11_bl, use_container_width=True)
-            if {"symbol", "target_weight"}.issubset(v11_bl.columns):
-                st.plotly_chart(px.pie(v11_bl, names="symbol", values="target_weight", title="V11 Black-Litterman-lite Allocation"), use_container_width=True)
-        if not v11_cross.empty:
-            st.subheader("V11 Cross-Asset Allocation")
-            st.dataframe(v11_cross, use_container_width=True)
-        if not v11_reb.empty:
-            st.subheader("V11 Dynamic Rebalancing Plan")
-            st.dataframe(v11_reb, use_container_width=True)
-        if not v11_attr.empty:
-            st.subheader("V11 Portfolio Factor Attribution")
-            st.dataframe(v11_attr, use_container_width=True)
-        if not dyn_sizing.empty:
-            st.subheader("V10.5 Dynamic Position Sizing")
-            st.dataframe(dyn_sizing, use_container_width=True)
-        if not stop_plan.empty:
-            st.subheader("V10.5 Stop-Loss / Take-Profit Plan")
-            st.dataframe(stop_plan, use_container_width=True)
-        sizing = safe_read_csv(paths["v90_sizing"])
-        if not sizing.empty:
-            st.subheader("V9 Baseline Position Sizing")
-            st.dataframe(sizing, use_container_width=True)
-        equity = safe_read_csv(paths["v90_equity"])
-        bt = safe_read_csv(paths["v90_backtest"])
-        if not bt.empty:
-            st.subheader("V11 Institutional Backtest Summary")
-            st.dataframe(bt, use_container_width=True)
-        if not equity.empty and {"date", "equity_curve"}.issubset(equity.columns):
-            st.plotly_chart(px.line(equity, x="date", y="equity_curve", title="V11 Portfolio Equity Curve"), use_container_width=True)
-            if "drawdown" in equity.columns:
-                st.plotly_chart(px.area(equity, x="date", y="drawdown", title="V11 Portfolio Drawdown"), use_container_width=True)
-    elif not legacy.empty:
-        st.subheader("Legacy Portfolio Construction")
-        st.dataframe(legacy, use_container_width=True)
+            st.plotly_chart(px.pie(v13_portfolio, names="symbol", values="target_weight", title="V14 Target Weights"), use_container_width=True)
+    elif not v115_portfolio.empty:
+        st.subheader("Fallback Robust Optimized Portfolio")
+        st.dataframe(v115_portfolio, use_container_width=True)
+        if {"symbol", "target_weight"}.issubset(v115_portfolio.columns):
+            st.plotly_chart(px.pie(v115_portfolio, names="symbol", values="target_weight", title="Robust Optimized Allocation"), use_container_width=True)
+    elif not v11_bl.empty:
+        st.subheader("Fallback Black-Litterman-lite Portfolio")
+        st.dataframe(v11_bl, use_container_width=True)
     else:
-        st.info("Run V11 model first.")
+        st.info("Run V14 model first to generate portfolio recommendation.")
+
+    if not v13_attr.empty:
+        st.subheader("V13/V14 20-Day Performance Attribution")
+        st.dataframe(v13_attr, use_container_width=True)
+
+    if not bt.empty:
+        st.subheader("Institutional Backtest Summary")
+        row = bt.tail(1).iloc[0]
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("CAGR", f"{float(row.get('cagr', 0)):.2%}")
+        c2.metric("Sharpe", f"{float(row.get('sharpe', 0)):.2f}")
+        c3.metric("Sortino", f"{float(row.get('sortino', 0)):.2f}")
+        c4.metric("Max DD", f"{float(row.get('max_drawdown', 0)):.2%}")
+        c5.metric("Equity Final", f"{float(row.get('equity_final', 0)):.2f}")
+        st.dataframe(bt.tail(1), use_container_width=True)
+
+    if not equity.empty and {"date", "equity_curve"}.issubset(equity.columns):
+        st.plotly_chart(px.line(equity, x="date", y="equity_curve", title="Portfolio Equity Curve"), use_container_width=True)
+        if "drawdown" in equity.columns:
+            st.plotly_chart(px.area(equity, x="date", y="drawdown", title="Portfolio Drawdown"), use_container_width=True)
+
+    with st.expander("Legacy portfolio diagnostics", expanded=False):
+        for label, key in [
+            ("V10.5 Optimized Portfolio", "v10_optimizer"),
+            ("V10.5 Dynamic Position Sizing", "v105_sizing"),
+            ("V10.5 Stop-Loss / Take-Profit Plan", "v105_stop"),
+            ("V11 Cross-Asset Allocation", "v11_cross_asset"),
+            ("V11 Dynamic Rebalancing Plan", "v11_rebalance"),
+            ("V11 Factor Attribution", "v11_factor_attr"),
+        ]:
+            df = safe_read_csv(paths[key])
+            if not df.empty:
+                st.markdown(f"**{label}**")
+                st.dataframe(df, use_container_width=True)
+
 
 with tabs[7]:
     st.header("Credit-Macro")
@@ -546,9 +531,9 @@ with tabs[9]:
 with tabs[10]:
     st.header("Model Governance")
     st.caption(
-        "V14 condensed governance view: only model inventory, validation, monitoring/retraining, "
-        "portfolio performance, confidence/calibration, institutional readiness, deployment recommendation, "
-        "and a compact V13 alpha output audit."
+        "V14 condensed governance view: model inventory, validation, monitoring/retraining, "
+        "portfolio performance, confidence/calibration, institutional readiness and deployment recommendation. "
+        "Investment details are moved to Market Regime, Sector Rotation, Stock Selection and Portfolio tabs."
     )
 
     gov = safe_read_csv(paths["v5_gov"])
@@ -674,21 +659,21 @@ with tabs[10]:
     else:
         st.info("No institutional readiness score yet.")
 
-    st.subheader("7. V13.5 Alpha Output Audit")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Market Timing Alpha**")
-        show_df(v13_timing.tail(1), "No V13 market timing output yet.")
-        st.markdown("**Sector Rotation Alpha**")
-        show_df(v13_sector.head(10), "No V13 sector output yet.")
-    with c2:
-        st.markdown("**Top Stock Alpha Ideas**")
-        if not v13_stock.empty:
-            cols = [c for c in ["rank", "symbol", "v13_alpha_score", "v13_decision", "sector_bucket", "market_regime", "score_explanation"] if c in v13_stock.columns]
-            st.dataframe(v13_stock[cols].head(20), use_container_width=True)
-        else:
-            st.info("No V13 stock alpha output yet.")
-        st.markdown("**V13 Portfolio Construction**")
-        show_df(v13_portfolio, "No V13 portfolio output yet.")
-    st.markdown("**Performance Attribution**")
-    show_df(v13_attr, "No V13 performance attribution output yet.")
+    with st.expander("V13/V14 alpha output audit", expanded=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Market Timing Alpha**")
+            show_df(v13_timing.tail(1), "No V13 market timing output yet.")
+            st.markdown("**Sector Rotation Alpha**")
+            show_df(v13_sector.head(10), "No V13 sector output yet.")
+        with c2:
+            st.markdown("**Top Stock Alpha Ideas**")
+            if not v13_stock.empty:
+                cols = [c for c in ["rank", "symbol", "v13_alpha_score", "v13_decision", "sector_bucket", "market_regime", "score_explanation"] if c in v13_stock.columns]
+                st.dataframe(v13_stock[cols].head(20), use_container_width=True)
+            else:
+                st.info("No V13 stock alpha output yet.")
+            st.markdown("**Portfolio Construction**")
+            show_df(v13_portfolio, "No V13 portfolio output yet.")
+        st.markdown("**Performance Attribution**")
+        show_df(v13_attr, "No V13 performance attribution output yet.")
