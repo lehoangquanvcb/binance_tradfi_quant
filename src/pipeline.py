@@ -73,6 +73,11 @@ from .regime_specific_model_v12 import build_regime_specific_diagnostics
 from .bayesian_ensemble_v12 import build_bayesian_ensemble
 from .confidence_weighted_portfolio_v12 import build_confidence_weighted_portfolio
 from .auto_retraining_trigger_v12 import build_auto_retraining_trigger
+from .market_timing_alpha_v13 import build_v13_market_timing
+from .sector_rotation_alpha_v13 import build_v13_sector_rotation
+from .stock_alpha_engine_v13 import build_v13_stock_alpha
+from .portfolio_construction_v13 import build_v13_portfolio
+from .performance_attribution_v13 import build_v13_performance_attribution
 
 
 def load_cfg():
@@ -354,6 +359,14 @@ def run_all(
     v12_confidence_weighted_portfolio = build_confidence_weighted_portfolio(v12_bayesian_ensemble, v115_optimized_portfolio, v9_confidence, nav=nav, max_weight=0.10, cash_buffer=0.15)
     v12_retraining_trigger = build_auto_retraining_trigger(monitoring, v105_readiness, v10_calibration_summary, v12_dynamic_thresholds)
 
+    # V13 Institutional Alpha Engine: clean market timing, sector rotation,
+    # stock alpha, portfolio construction and performance attribution.
+    v13_market_timing = build_v13_market_timing(market_regime_v8, confidence=v9_confidence, macro_credit=macro_credit, calibration_summary=v10_calibration_summary)
+    v13_sector_rotation = build_v13_sector_rotation(sector_rotation_v8, v115_sector_strength, v10_sector_allocation, v13_market_timing)
+    v13_stock_alpha = build_v13_stock_alpha(stock_selection_v8, bayesian=v12_bayesian_ensemble, sector_rotation=v13_sector_rotation, market_timing=v13_market_timing)
+    v13_portfolio = build_v13_portfolio(v13_stock_alpha, market_timing=v13_market_timing, sector_rotation=v13_sector_rotation, nav=nav, max_weight=0.10)
+    v13_performance_attribution = build_v13_performance_attribution(v13_portfolio, returns_panel)
+
     validation = validation_check({
         'auc': metrics.get('auc', 0.0),
         'accuracy': metrics.get('accuracy', 0.0),
@@ -363,8 +376,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v12.0',
-        'V12 production-ready CIO workstation: dynamic thresholds, meta model, Bayesian ensemble, regime diagnostics and confidence-weighted portfolio',
+        'v13.0',
+        'V13 institutional alpha engine: market timing, sector rotation, stock alpha, portfolio construction and performance attribution',
         metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
@@ -428,6 +441,11 @@ def run_all(
     v12_bayesian_ensemble.to_csv(DATA_PROCESSED/'v12_bayesian_ensemble.csv', index=False)
     v12_confidence_weighted_portfolio.to_csv(DATA_PROCESSED/'v12_confidence_weighted_portfolio.csv', index=False)
     v12_retraining_trigger.to_csv(DATA_PROCESSED/'v12_retraining_trigger.csv', index=False)
+    v13_market_timing.to_csv(DATA_PROCESSED/'v13_market_timing.csv', index=False)
+    v13_sector_rotation.to_csv(DATA_PROCESSED/'v13_sector_rotation.csv', index=False)
+    v13_stock_alpha.to_csv(DATA_PROCESSED/'v13_stock_alpha.csv', index=False)
+    v13_portfolio.to_csv(DATA_PROCESSED/'v13_portfolio.csv', index=False)
+    v13_performance_attribution.to_csv(DATA_PROCESSED/'v13_performance_attribution.csv', index=False)
     v9_appendix = (
         f"\n\n### V9.0 Institutional Metrics\n"
         f"- Portfolio Sharpe: {v9_backtest_metrics.get('sharpe', 0.0):.2f}\n"

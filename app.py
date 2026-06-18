@@ -35,8 +35,8 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
         st.dataframe(df, use_container_width=True)
 
 
-st.set_page_config(page_title="V12 Production CIO Workstation", layout="wide")
-st.title("V12 Production CIO Workstation")
+st.set_page_config(page_title="V13 Institutional Alpha Engine", layout="wide")
+st.title("V13 Institutional Alpha Engine")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V12 model"):
-        with st.spinner(f"Running V12 Production CIO Workstation pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V13 model"):
+        with st.spinner(f"Running V13 Institutional Alpha Engine pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -120,6 +120,11 @@ paths = {
     "v12_bayesian": DATA_PROCESSED / "v12_bayesian_ensemble.csv",
     "v12_portfolio": DATA_PROCESSED / "v12_confidence_weighted_portfolio.csv",
     "v12_retraining": DATA_PROCESSED / "v12_retraining_trigger.csv",
+    "v13_timing": DATA_PROCESSED / "v13_market_timing.csv",
+    "v13_sector": DATA_PROCESSED / "v13_sector_rotation.csv",
+    "v13_stock": DATA_PROCESSED / "v13_stock_alpha.csv",
+    "v13_portfolio": DATA_PROCESSED / "v13_portfolio.csv",
+    "v13_attribution": DATA_PROCESSED / "v13_performance_attribution.csv",
 }
 
 tabs = st.tabs([
@@ -156,13 +161,46 @@ with tabs[0]:
         c3.metric("Equity Weight", f"{float(latest.get('recommended_equity_weight', 0)):.0%}")
         c4.metric("Cash Weight", f"{float(latest.get('recommended_cash_weight', 0)):.0%}")
     else:
-        st.info("Run V12 model to populate CIO dashboard.")
+        st.info("Run V13 model to populate CIO dashboard.")
+
+    v13_timing = safe_read_csv(paths.get("v13_timing"))
+    v13_sector = safe_read_csv(paths.get("v13_sector"))
+    v13_stock = safe_read_csv(paths.get("v13_stock"))
+    v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
+    v13_attr = safe_read_csv(paths.get("v13_attribution"))
+    if not v13_timing.empty or not v13_sector.empty or not v13_stock.empty or not v13_portfolio.empty:
+        st.subheader("V13 Institutional Alpha Engine")
+        if not v13_timing.empty:
+            t = v13_timing.tail(1).iloc[0]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Market Timing", str(t.get("market_timing_signal", "N/A")))
+            c2.metric("Timing Score", f"{float(t.get('market_timing_score', 0)):.1f}/100")
+            c3.metric("Target Equity", f"{float(t.get('target_equity_weight', 0)):.0%}")
+            c4.metric("Target Cash", f"{float(t.get('target_cash_weight', 0)):.0%}")
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            st.markdown("**Top V13 Sectors**")
+            if not v13_sector.empty:
+                st.dataframe(v13_sector.head(8), use_container_width=True)
+            st.markdown("**Top V13 Stock Alpha Ideas**")
+            if not v13_stock.empty:
+                cols = [c for c in ["rank", "symbol", "v13_alpha_score", "v13_decision", "sector_bucket", "market_regime", "score_explanation"] if c in v13_stock.columns]
+                st.dataframe(v13_stock[cols].head(12), use_container_width=True)
+        with cc2:
+            st.markdown("**V13 Portfolio Construction**")
+            if not v13_portfolio.empty:
+                st.dataframe(v13_portfolio, use_container_width=True)
+                if {"symbol", "target_weight"}.issubset(v13_portfolio.columns):
+                    st.plotly_chart(px.pie(v13_portfolio, names="symbol", values="target_weight", title="V13 Risk-Budgeted Portfolio"), use_container_width=True)
+            st.markdown("**V13 Performance Attribution**")
+            if not v13_attr.empty:
+                st.dataframe(v13_attr.head(12), use_container_width=True)
 
     v90_conf = safe_read_csv(paths["v90_confidence"])
     v90_bt = safe_read_csv(paths["v90_backtest"])
     v90_prob = safe_read_csv(paths["v90_regime_prob"])
     if not v90_conf.empty or not v90_bt.empty or not v90_prob.empty:
-        st.subheader("V12 Production CIO Workstation Metrics")
+        st.subheader("V13 Institutional Alpha Engine Metrics")
         c1, c2, c3, c4 = st.columns(4)
         if not v90_conf.empty:
             row = v90_conf.tail(1).iloc[0]
@@ -287,6 +325,13 @@ with tabs[2]:
         if {"sector", "score"}.issubset(v11_sector.columns):
             st.plotly_chart(px.bar(v11_sector.sort_values("score"), x="score", y="sector", color="action" if "action" in v11_sector.columns else None, orientation="h", title="V11 Sector ETF Rotation Score"), use_container_width=True)
 
+    v13_sector = safe_read_csv(paths.get("v13_sector"))
+    if not v13_sector.empty:
+        st.subheader("V13 Sector Rotation Alpha")
+        st.dataframe(v13_sector, use_container_width=True)
+        if {"sector", "v13_sector_score"}.issubset(v13_sector.columns):
+            st.plotly_chart(px.bar(v13_sector.sort_values("v13_sector_score"), x="v13_sector_score", y="sector", color="v13_action" if "v13_action" in v13_sector.columns else None, orientation="h", title="V13 Sector Alpha Score"), use_container_width=True)
+
     sector_alloc = safe_read_csv(paths["v10_sector_alloc"])
     if not sector_alloc.empty:
         st.subheader("V10 Sector Allocation Recommendation")
@@ -303,6 +348,12 @@ with tabs[3]:
         cols = [c for c in ["rank", "symbol", "close", "stock_score", "decision", "prob_up", "ensemble_score", "relative_strength_60d", "sector_bucket", "sector_action", "market_regime"] if c in stock.columns]
         st.dataframe(stock[cols], use_container_width=True)
         st.plotly_chart(px.bar(stock.head(25).sort_values("stock_score"), x="stock_score", y="symbol", color="decision", orientation="h", title="Top Stock Selection Scores"), use_container_width=True)
+        v13_stock = safe_read_csv(paths.get("v13_stock"))
+        if not v13_stock.empty:
+            st.subheader("V13 Stock Alpha Ranking")
+            st.dataframe(v13_stock.head(40), use_container_width=True)
+            if {"v13_alpha_score", "symbol"}.issubset(v13_stock.columns):
+                st.plotly_chart(px.bar(v13_stock.head(25).sort_values("v13_alpha_score"), x="v13_alpha_score", y="symbol", color="v13_decision" if "v13_decision" in v13_stock.columns else None, orientation="h", title="V13 Stock Alpha Score"), use_container_width=True)
         alpha = safe_read_csv(paths["v10_alpha"])
         vote = safe_read_csv(paths["v105_vote"])
         if not alpha.empty:
@@ -337,6 +388,16 @@ with tabs[5]:
 
 with tabs[6]:
     st.header("Portfolio Recommendation")
+    v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
+    v13_attr = safe_read_csv(paths.get("v13_attribution"))
+    if not v13_portfolio.empty:
+        st.subheader("V13 Risk-Budgeted Portfolio")
+        st.dataframe(v13_portfolio, use_container_width=True)
+        if {"symbol", "target_weight"}.issubset(v13_portfolio.columns):
+            st.plotly_chart(px.pie(v13_portfolio, names="symbol", values="target_weight", title="V13 Target Weights"), use_container_width=True)
+    if not v13_attr.empty:
+        st.subheader("V13 20-Day Performance Attribution")
+        st.dataframe(v13_attr, use_container_width=True)
     port = safe_read_csv(paths["v8_portfolio"])
     legacy = safe_read_csv(paths["v5_weights"])
     if not port.empty:
@@ -535,5 +596,22 @@ with tabs[10]:
     if not v12_portfolio.empty:
         st.subheader("V12 Confidence-Weighted Portfolio")
         st.dataframe(v12_portfolio, use_container_width=True)
+    v13_timing = safe_read_csv(paths.get("v13_timing"))
+    v13_sector = safe_read_csv(paths.get("v13_sector"))
+    v13_stock = safe_read_csv(paths.get("v13_stock"))
+    v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
+    v13_attr = safe_read_csv(paths.get("v13_attribution"))
+    if not v13_timing.empty:
+        st.subheader("V13 Market Timing Governance")
+        st.dataframe(v13_timing, use_container_width=True)
+    if not v13_stock.empty:
+        st.subheader("V13 Stock Alpha Engine")
+        st.dataframe(v13_stock.head(20), use_container_width=True)
+    if not v13_portfolio.empty:
+        st.subheader("V13 Portfolio Construction")
+        st.dataframe(v13_portfolio, use_container_width=True)
+    if not v13_attr.empty:
+        st.subheader("V13 Performance Attribution")
+        st.dataframe(v13_attr, use_container_width=True)
     if not cal_curve.empty and {"avg_pred", "realized"}.issubset(cal_curve.columns):
         st.plotly_chart(px.line(cal_curve, x="avg_pred", y="realized", markers=True, title="Reliability Curve"), use_container_width=True)
