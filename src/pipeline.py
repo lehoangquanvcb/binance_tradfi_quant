@@ -376,8 +376,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v13.0',
-        'V13 institutional alpha engine: market timing, sector rotation, stock alpha, portfolio construction and performance attribution',
+        'v13.5',
+        'V13.5 institutional alpha engine: clean governance, market timing, sector rotation, stock alpha, portfolio construction and performance attribution',
         metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
@@ -457,6 +457,7 @@ def run_all(
         f"- V11 Portfolio Layer: ETF rotation, cross-asset allocation, factor attribution and rebalancing plan generated.\n"
         f"- V11.5 Production Layer: adaptive retraining={v115_retraining_plan.iloc[0].get('retraining_action', 'N/A') if not v115_retraining_plan.empty else 'N/A'}, robust optimizer generated.\n"
         f"- V12 Production Layer: dynamic threshold={v12_dynamic_thresholds.iloc[0].get('adaptive_mode', 'N/A') if not v12_dynamic_thresholds.empty else 'N/A'}, retraining={v12_retraining_trigger.iloc[0].get('retraining_action', 'N/A') if not v12_retraining_trigger.empty else 'N/A'}, confidence-weighted portfolio generated.\n"
+        f"- V13.5 Alpha Layer: market timing, sector rotation alpha, stock alpha, risk-budgeted portfolio and performance attribution generated.\n"
     )
     cio_summary_v8 = cio_summary_v8 + v9_appendix
     (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')

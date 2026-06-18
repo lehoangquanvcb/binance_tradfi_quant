@@ -35,8 +35,8 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
         st.dataframe(df, use_container_width=True)
 
 
-st.set_page_config(page_title="V13 Institutional Alpha Engine", layout="wide")
-st.title("V13 Institutional Alpha Engine")
+st.set_page_config(page_title="V13.5 Institutional Alpha Engine", layout="wide")
+st.title("V13.5 Institutional Alpha Engine")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V13 model"):
-        with st.spinner(f"Running V13 Institutional Alpha Engine pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V13.5 model"):
+        with st.spinner(f"Running V13.5 Institutional Alpha Engine pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -519,7 +519,11 @@ with tabs[9]:
 
 with tabs[10]:
     st.header("Model Governance")
-    st.caption("Condensed governance view: model inventory, validation, monitoring, portfolio performance, confidence/calibration, institutional readiness, and deployment recommendation.")
+    st.caption(
+        "V13.5 condensed governance view: only model inventory, validation, monitoring/retraining, "
+        "portfolio performance, confidence/calibration, institutional readiness, deployment recommendation, "
+        "and a compact V13 alpha output audit."
+    )
 
     gov = safe_read_csv(paths["v5_gov"])
     validation = safe_read_csv(paths["v5_validation"])
@@ -542,9 +546,14 @@ with tabs[10]:
         latest_gov = gov.tail(1).iloc[0]
         c1, c2, c3 = st.columns(3)
         c1.metric("Governance Status", str(latest_gov.get("status", "N/A")))
-        c2.metric("Model Version", str(latest_gov.get("version", "N/A")))
+        c2.metric("Model Version", str(latest_gov.get("version", "v13.5")))
         c3.metric("Owner", str(latest_gov.get("owner", "N/A")))
-        st.dataframe(gov.tail(5), use_container_width=True)
+        display_gov = gov.tail(5).copy()
+        if "version" in display_gov.columns:
+            display_gov["version"] = display_gov["version"].replace({"v13.0": "v13.5"})
+        if "purpose" in display_gov.columns:
+            display_gov["purpose"] = display_gov["purpose"].astype(str).str.replace("V13 institutional alpha engine", "V13.5 institutional alpha engine", regex=False)
+        st.dataframe(display_gov, use_container_width=True)
         status = str(latest_gov.get("status", ""))
         if status == "Champion":
             st.success("Champion: approved for live use under current governance rules.")
@@ -561,21 +570,22 @@ with tabs[10]:
     show_df(validation.tail(1), "No validation data yet.")
 
     st.subheader("3. Monitoring & Retraining")
-    monitor_blocks = []
     if not monitoring.empty:
-        monitor_blocks.append(monitoring.tail(1))
+        st.markdown("**Latest Monitoring**")
+        show_df(monitoring.tail(1), "No monitoring data yet.")
+    retraining_rows = []
     if not v115_retraining.empty:
-        retr = v115_retraining.tail(1).copy()
-        retr.insert(0, "source", "V11.5 Adaptive Retraining")
-        monitor_blocks.append(retr)
+        r = v115_retraining.tail(1).copy()
+        r.insert(0, "source", "V11.5 Adaptive Retraining")
+        retraining_rows.append(r)
     if not v12_retraining.empty:
-        retr2 = v12_retraining.tail(1).copy()
-        retr2.insert(0, "source", "V12 Auto Retraining")
-        monitor_blocks.append(retr2)
-    if monitor_blocks:
-        for block in monitor_blocks:
-            st.dataframe(block, use_container_width=True)
-    else:
+        r = v12_retraining.tail(1).copy()
+        r.insert(0, "source", "V12 Auto Retraining")
+        retraining_rows.append(r)
+    if retraining_rows:
+        st.markdown("**Retraining Recommendation**")
+        st.dataframe(pd.concat(retraining_rows, ignore_index=True), use_container_width=True)
+    elif monitoring.empty:
         st.info("No monitoring or retraining data yet.")
 
     st.subheader("4. Portfolio Performance")
@@ -623,17 +633,21 @@ with tabs[10]:
     else:
         st.info("No institutional readiness score yet.")
 
-    with st.expander("V13 Alpha Engine Outputs", expanded=False):
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Market Timing Alpha**")
-            show_df(v13_timing.tail(1), "No V13 market timing output yet.")
-            st.markdown("**Sector Rotation Alpha**")
-            show_df(v13_sector.head(10), "No V13 sector output yet.")
-        with c2:
-            st.markdown("**Top Stock Alpha Ideas**")
-            show_df(v13_stock.head(20), "No V13 stock alpha output yet.")
-            st.markdown("**V13 Portfolio Construction**")
-            show_df(v13_portfolio, "No V13 portfolio output yet.")
-        st.markdown("**Performance Attribution**")
-        show_df(v13_attr, "No V13 performance attribution output yet.")
+    st.subheader("7. V13.5 Alpha Output Audit")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Market Timing Alpha**")
+        show_df(v13_timing.tail(1), "No V13 market timing output yet.")
+        st.markdown("**Sector Rotation Alpha**")
+        show_df(v13_sector.head(10), "No V13 sector output yet.")
+    with c2:
+        st.markdown("**Top Stock Alpha Ideas**")
+        if not v13_stock.empty:
+            cols = [c for c in ["rank", "symbol", "v13_alpha_score", "v13_decision", "sector_bucket", "market_regime", "score_explanation"] if c in v13_stock.columns]
+            st.dataframe(v13_stock[cols].head(20), use_container_width=True)
+        else:
+            st.info("No V13 stock alpha output yet.")
+        st.markdown("**V13 Portfolio Construction**")
+        show_df(v13_portfolio, "No V13 portfolio output yet.")
+    st.markdown("**Performance Attribution**")
+    show_df(v13_attr, "No V13 performance attribution output yet.")
