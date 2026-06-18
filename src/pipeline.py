@@ -1,6 +1,7 @@
 from pathlib import Path
 import yaml
 import pandas as pd
+import numpy as np
 import yfinance as yf
 from .config import ROOT, DATA_RAW, DATA_PROCESSED, MODELS
 from .binance_data import discover_tradfi_symbols, fetch_klines
@@ -207,6 +208,117 @@ def build_dataset(start='2018-01-01', prefer='yahoo'):
     return ds
 
 
+
+def build_v14_portfolio_analytics(portfolio_df: pd.DataFrame, returns_panel: pd.DataFrame, stock_context: pd.DataFrame | None = None):
+    """V14 Institutional Portfolio Analytics.
+
+    Produces CIO/PM level diagnostics without adding another dependency:
+    concentration, cash exposure, sector concentration and risk contribution.
+    """
+    analytics_cols = [
+        'portfolio_names','invested_weight','cash_weight','top5_weight','top10_weight',
+        'max_position_weight','sector_hhi','concentration_label','portfolio_vol_annual',
+        'largest_position','largest_risk_contributor'
+    ]
+    rc_cols = ['symbol','target_weight','sector','asset_vol_annual','risk_contribution','risk_contribution_pct']
+    if portfolio_df is None or portfolio_df.empty or 'symbol' not in portfolio_df.columns:
+        return pd.DataFrame(columns=analytics_cols), pd.DataFrame(columns=rc_cols)
+
+    p = portfolio_df.copy()
+    weight_col = 'target_weight' if 'target_weight' in p.columns else ('weight' if 'weight' in p.columns else None)
+    if weight_col is None:
+        return pd.DataFrame(columns=analytics_cols), pd.DataFrame(columns=rc_cols)
+    p['symbol'] = p['symbol'].astype(str)
+    p['target_weight'] = pd.to_numeric(p[weight_col], errors='coerce').fillna(0.0).clip(lower=0)
+    p = p.groupby('symbol', as_index=False)['target_weight'].sum()
+    total = float(p['target_weight'].sum())
+    if total > 1.25:
+        p['target_weight'] = p['target_weight'] / 100.0
+        total = float(p['target_weight'].sum())
+    if total > 0 and total < 0.98:
+        cash_add = 1.0 - total
+        p = pd.concat([p, pd.DataFrame([{'symbol':'CASH','target_weight':cash_add}])], ignore_index=True)
+    elif total > 1.05:
+        p['target_weight'] = p['target_weight'] / total
+
+    if stock_context is not None and not stock_context.empty:
+        ctx_cols = [c for c in ['symbol','sector','sector_bucket'] if c in stock_context.columns]
+        if 'symbol' in ctx_cols:
+            ctx = stock_context[ctx_cols].drop_duplicates('symbol')
+            p = p.merge(ctx, on='symbol', how='left')
+    if 'sector' not in p.columns:
+        p['sector'] = p.get('sector_bucket', p['symbol'])
+    p['sector'] = p['sector'].fillna(p['symbol'])
+    p.loc[p['symbol'].str.upper().eq('CASH'), 'sector'] = 'Cash'
+
+    noncash = p[~p['symbol'].str.upper().eq('CASH')].copy()
+    weights_sorted = noncash['target_weight'].sort_values(ascending=False)
+    top5 = float(weights_sorted.head(5).sum())
+    top10 = float(weights_sorted.head(10).sum())
+    maxw = float(weights_sorted.max()) if not weights_sorted.empty else 0.0
+    cash = float(p.loc[p['symbol'].str.upper().eq('CASH'), 'target_weight'].sum())
+    invested = max(0.0, 1.0 - cash)
+    sector_weights = p.groupby('sector')['target_weight'].sum()
+    sector_hhi = float((sector_weights ** 2).sum()) if not sector_weights.empty else 0.0
+    if sector_hhi >= 0.35 or maxw >= 0.15 or top10 >= 0.85:
+        concentration_label = 'HIGH'
+    elif sector_hhi >= 0.22 or maxw >= 0.10 or top10 >= 0.70:
+        concentration_label = 'MODERATE'
+    else:
+        concentration_label = 'DIVERSIFIED'
+
+    rc = noncash[['symbol','target_weight','sector']].copy()
+    port_vol = 0.0
+    largest_rc = 'N/A'
+    if returns_panel is not None and not returns_panel.empty and not rc.empty:
+        cols = [s for s in rc['symbol'] if s in returns_panel.columns]
+        if cols:
+            r = returns_panel[cols].dropna(how='all').fillna(0.0)
+            w = rc.set_index('symbol').reindex(cols)['target_weight'].fillna(0.0).values
+            cov = r.cov().values * 252.0
+            port_var = float(w @ cov @ w) if len(w) else 0.0
+            port_vol = float(np.sqrt(max(port_var, 0.0)))
+            if port_var > 0:
+                marginal = cov @ w
+                contrib = w * marginal
+                pct = contrib / port_var
+            else:
+                pct = np.zeros_like(w)
+            rc = rc.set_index('symbol')
+            rc.loc[cols, 'risk_contribution_pct'] = pct
+            asset_vol = r.std() * np.sqrt(252.0)
+            rc.loc[cols, 'asset_vol_annual'] = asset_vol.reindex(cols).values
+            rc = rc.reset_index()
+            rc['risk_contribution_pct'] = pd.to_numeric(rc.get('risk_contribution_pct', 0), errors='coerce').fillna(0.0)
+            rc['risk_contribution'] = rc['risk_contribution_pct'] * port_vol
+            if not rc.empty:
+                largest_rc = str(rc.sort_values('risk_contribution_pct', ascending=False).iloc[0]['symbol'])
+        else:
+            rc['asset_vol_annual'] = 0.0
+            rc['risk_contribution'] = 0.0
+            rc['risk_contribution_pct'] = 0.0
+    else:
+        rc['asset_vol_annual'] = 0.0
+        rc['risk_contribution'] = 0.0
+        rc['risk_contribution_pct'] = 0.0
+
+    largest_pos = str(noncash.sort_values('target_weight', ascending=False).iloc[0]['symbol']) if not noncash.empty else 'N/A'
+    analytics = pd.DataFrame([{
+        'portfolio_names': int(noncash['symbol'].nunique()),
+        'invested_weight': round(invested, 4),
+        'cash_weight': round(cash, 4),
+        'top5_weight': round(top5, 4),
+        'top10_weight': round(top10, 4),
+        'max_position_weight': round(maxw, 4),
+        'sector_hhi': round(sector_hhi, 4),
+        'concentration_label': concentration_label,
+        'portfolio_vol_annual': round(port_vol, 4),
+        'largest_position': largest_pos,
+        'largest_risk_contributor': largest_rc,
+    }])
+    rc = rc[rc_cols].sort_values('risk_contribution_pct', ascending=False).reset_index(drop=True)
+    return analytics, rc
+
 def run_all(
     start='2018-01-01',
     prefer='yahoo',
@@ -367,6 +479,9 @@ def run_all(
     v13_portfolio = build_v13_portfolio(v13_stock_alpha, market_timing=v13_market_timing, sector_rotation=v13_sector_rotation, nav=nav, max_weight=0.10)
     v13_performance_attribution = build_v13_performance_attribution(v13_portfolio, returns_panel)
 
+    # V14 Institutional CIO Platform: portfolio analytics and risk contribution.
+    v14_portfolio_analytics, v14_risk_contribution = build_v14_portfolio_analytics(v13_portfolio, returns_panel, v13_stock_alpha)
+
     validation = validation_check({
         'auc': metrics.get('auc', 0.0),
         'accuracy': metrics.get('accuracy', 0.0),
@@ -376,8 +491,8 @@ def run_all(
     })
     gov_rec = register_model(
         'xgb_direction_model',
-        'v13.5',
-        'V13.5 institutional alpha engine: clean governance, market timing, sector rotation, stock alpha, portfolio construction and performance attribution',
+        'v14.0',
+        'V14 institutional CIO platform: portfolio analytics, risk contribution, clean governance, market timing, sector rotation, stock alpha and risk-budgeted portfolio construction',
         metrics={**metrics, **{f'portfolio_{k}': v for k, v in v9_backtest_metrics.items()}},
         status=validation.get('model_status', 'Watch'),
     )
@@ -446,6 +561,8 @@ def run_all(
     v13_stock_alpha.to_csv(DATA_PROCESSED/'v13_stock_alpha.csv', index=False)
     v13_portfolio.to_csv(DATA_PROCESSED/'v13_portfolio.csv', index=False)
     v13_performance_attribution.to_csv(DATA_PROCESSED/'v13_performance_attribution.csv', index=False)
+    v14_portfolio_analytics.to_csv(DATA_PROCESSED/'v14_portfolio_analytics.csv', index=False)
+    v14_risk_contribution.to_csv(DATA_PROCESSED/'v14_risk_contribution.csv', index=False)
     v9_appendix = (
         f"\n\n### V9.0 Institutional Metrics\n"
         f"- Portfolio Sharpe: {v9_backtest_metrics.get('sharpe', 0.0):.2f}\n"
@@ -457,7 +574,7 @@ def run_all(
         f"- V11 Portfolio Layer: ETF rotation, cross-asset allocation, factor attribution and rebalancing plan generated.\n"
         f"- V11.5 Production Layer: adaptive retraining={v115_retraining_plan.iloc[0].get('retraining_action', 'N/A') if not v115_retraining_plan.empty else 'N/A'}, robust optimizer generated.\n"
         f"- V12 Production Layer: dynamic threshold={v12_dynamic_thresholds.iloc[0].get('adaptive_mode', 'N/A') if not v12_dynamic_thresholds.empty else 'N/A'}, retraining={v12_retraining_trigger.iloc[0].get('retraining_action', 'N/A') if not v12_retraining_trigger.empty else 'N/A'}, confidence-weighted portfolio generated.\n"
-        f"- V13.5 Alpha Layer: market timing, sector rotation alpha, stock alpha, risk-budgeted portfolio and performance attribution generated.\n"
+        f"- V14 CIO Platform Layer: portfolio analytics, risk contribution, market timing, sector rotation alpha, stock alpha, risk-budgeted portfolio and performance attribution generated.\n"
     )
     cio_summary_v8 = cio_summary_v8 + v9_appendix
     (DATA_PROCESSED/'v8_cio_summary.txt').write_text(cio_summary_v8, encoding='utf-8')

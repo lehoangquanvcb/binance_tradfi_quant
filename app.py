@@ -35,8 +35,8 @@ def show_df(df: pd.DataFrame, empty_msg: str = "Run model first."):
         st.dataframe(df, use_container_width=True)
 
 
-st.set_page_config(page_title="V13.5 Institutional Alpha Engine", layout="wide")
-st.title("V13.5 Institutional Alpha Engine")
+st.set_page_config(page_title="V14 Institutional CIO Platform", layout="wide")
+st.title("V14 Institutional CIO Platform")
 st.caption(
     "Market Regime → Sector Rotation → Stock Selection → Exit Watchlist → Portfolio Recommendation. "
     "Designed as a decision-support layer for CIO/PM/Head of Research workflows."
@@ -52,8 +52,8 @@ with st.sidebar:
     backtest_mode = st.selectbox("Backtest mode", ["fast", "standard", "full"], index=0, help="Fast is recommended for Streamlit Cloud.")
     testnet_mode = st.checkbox("Binance testnet / sandbox mode", value=True)
     live_mode = st.checkbox("Live mode enabled", value=False, help="Live trading should remain disabled unless the OMS/risk stack is fully tested.")
-    if st.button("Run / Refresh V13.5 model"):
-        with st.spinner(f"Running V13.5 Institutional Alpha Engine pipeline... Backtest={run_wf}, mode={backtest_mode}"):
+    if st.button("Run / Refresh V14 model"):
+        with st.spinner(f"Running V14 Institutional CIO Platform pipeline... Backtest={run_wf}, mode={backtest_mode}"):
             metrics, signals, risks, regimes, portfolio, kill, bt_summary = run_all(
                 start=start,
                 prefer=prefer,
@@ -125,6 +125,8 @@ paths = {
     "v13_stock": DATA_PROCESSED / "v13_stock_alpha.csv",
     "v13_portfolio": DATA_PROCESSED / "v13_portfolio.csv",
     "v13_attribution": DATA_PROCESSED / "v13_performance_attribution.csv",
+    "v14_analytics": DATA_PROCESSED / "v14_portfolio_analytics.csv",
+    "v14_risk_contrib": DATA_PROCESSED / "v14_risk_contribution.csv",
 }
 
 tabs = st.tabs([
@@ -214,10 +216,24 @@ with tabs[0]:
             c4.metric("Portfolio Sharpe", f"{float(row.get('sharpe', 0)):.2f}")
 
 
+    v14_analytics = safe_read_csv(paths.get("v14_analytics"))
+    v14_risk_contrib = safe_read_csv(paths.get("v14_risk_contrib"))
+    if not v14_analytics.empty:
+        st.subheader("V14 Portfolio Analytics")
+        row = v14_analytics.tail(1).iloc[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Portfolio Volatility", f"{float(row.get('portfolio_vol_annual', 0)):.2%}")
+        c2.metric("Top 10 Weight", f"{float(row.get('top10_weight', 0)):.0%}")
+        c3.metric("Sector Concentration", f"{float(row.get('sector_hhi', 0)):.2f}", str(row.get('concentration_label', 'N/A')))
+        c4.metric("Largest Risk Contributor", str(row.get('largest_risk_contributor', 'N/A')))
+    if not v14_risk_contrib.empty:
+        with st.expander("V14 Risk Contribution Detail", expanded=False):
+            st.dataframe(v14_risk_contrib.head(20), use_container_width=True)
+
     readiness = safe_read_csv(paths["v105_readiness"])
     cal_sum = safe_read_csv(paths["v10_cal_summary"])
     if not readiness.empty or not cal_sum.empty:
-        st.subheader("V10.5/V11 Readiness & Calibration")
+        st.subheader("Readiness & Calibration")
         c1, c2, c3 = st.columns(3)
         if not readiness.empty:
             row = readiness.tail(1).iloc[0]
@@ -233,7 +249,7 @@ with tabs[0]:
     v11_reb = safe_read_csv(paths["v11_rebalance"])
     v11_fc = safe_read_csv(paths["v11_regime_forecast"])
     if not v11_cross.empty or not v11_bl.empty or not v11_fc.empty:
-        st.subheader("V11 Portfolio Manager Overlay")
+        st.subheader("Portfolio Manager Overlay")
         c1, c2, c3 = st.columns(3)
         if not v11_fc.empty:
             r = v11_fc.iloc[0]
@@ -387,7 +403,17 @@ with tabs[5]:
         st.plotly_chart(px.bar(sig.sort_values(score_col), x=score_col, y="symbol", orientation="h", title="Signal Score"), use_container_width=True)
 
 with tabs[6]:
-    st.header("Portfolio Recommendation")
+    st.header("Portfolio Recommendation & Analytics")
+    v14_analytics = safe_read_csv(paths.get("v14_analytics"))
+    v14_risk_contrib = safe_read_csv(paths.get("v14_risk_contrib"))
+    if not v14_analytics.empty:
+        st.subheader("V14 Institutional Portfolio Analytics")
+        show_df(v14_analytics.tail(1), "No V14 portfolio analytics yet.")
+    if not v14_risk_contrib.empty:
+        st.subheader("V14 Risk Contribution")
+        show_df(v14_risk_contrib.head(30), "No V14 risk contribution yet.")
+        if {"symbol", "risk_contribution"}.issubset(v14_risk_contrib.columns):
+            st.plotly_chart(px.bar(v14_risk_contrib.head(20).sort_values("risk_contribution"), x="risk_contribution", y="symbol", orientation="h", title="V14 Portfolio Risk Contribution"), use_container_width=True)
     v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
     v13_attr = safe_read_csv(paths.get("v13_attribution"))
     if not v13_portfolio.empty:
@@ -520,7 +546,7 @@ with tabs[9]:
 with tabs[10]:
     st.header("Model Governance")
     st.caption(
-        "V13.5 condensed governance view: only model inventory, validation, monitoring/retraining, "
+        "V14 condensed governance view: only model inventory, validation, monitoring/retraining, "
         "portfolio performance, confidence/calibration, institutional readiness, deployment recommendation, "
         "and a compact V13 alpha output audit."
     )
@@ -600,6 +626,21 @@ with tabs[10]:
         st.dataframe(bt.tail(1), use_container_width=True)
     else:
         st.info("No portfolio backtest data yet.")
+
+    v14_analytics = safe_read_csv(paths.get("v14_analytics"))
+    v14_risk_contrib = safe_read_csv(paths.get("v14_risk_contrib"))
+    if not v14_analytics.empty:
+        st.subheader("4B. V14 Portfolio Analytics")
+        row = v14_analytics.tail(1).iloc[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Top 5 Weight", f"{float(row.get('top5_weight', 0)):.0%}")
+        c2.metric("Top 10 Weight", f"{float(row.get('top10_weight', 0)):.0%}")
+        c3.metric("Portfolio Vol", f"{float(row.get('portfolio_vol_annual', 0)):.2%}")
+        c4.metric("Concentration", str(row.get('concentration_label', 'N/A')))
+        st.dataframe(v14_analytics.tail(1), use_container_width=True)
+    if not v14_risk_contrib.empty:
+        with st.expander("V14 top risk contributors", expanded=False):
+            st.dataframe(v14_risk_contrib.head(15), use_container_width=True)
 
     st.subheader("5. Confidence & Calibration")
     c1, c2 = st.columns(2)
