@@ -519,17 +519,32 @@ with tabs[9]:
 
 with tabs[10]:
     st.header("Model Governance")
+    st.caption("Condensed governance view: model inventory, validation, monitoring, portfolio performance, confidence/calibration, institutional readiness, and deployment recommendation.")
+
     gov = safe_read_csv(paths["v5_gov"])
     validation = safe_read_csv(paths["v5_validation"])
     monitoring = safe_read_csv(paths["monitoring"])
+    bt = safe_read_csv(paths["v90_backtest"])
+    conf = safe_read_csv(paths["v90_confidence"])
+    readiness = safe_read_csv(paths["v105_readiness"])
+    cal_sum = safe_read_csv(paths["v10_cal_summary"])
+    cal_curve = safe_read_csv(paths["v10_calibration"])
+    v115_retraining = safe_read_csv(paths.get("v115_retraining"))
+    v12_retraining = safe_read_csv(paths.get("v12_retraining"))
+    v13_timing = safe_read_csv(paths.get("v13_timing"))
+    v13_sector = safe_read_csv(paths.get("v13_sector"))
+    v13_stock = safe_read_csv(paths.get("v13_stock"))
+    v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
+    v13_attr = safe_read_csv(paths.get("v13_attribution"))
+
+    st.subheader("1. Model Inventory")
     if not gov.empty:
-        st.subheader("Model Inventory")
         latest_gov = gov.tail(1).iloc[0]
         c1, c2, c3 = st.columns(3)
         c1.metric("Governance Status", str(latest_gov.get("status", "N/A")))
         c2.metric("Model Version", str(latest_gov.get("version", "N/A")))
         c3.metric("Owner", str(latest_gov.get("owner", "N/A")))
-        st.dataframe(gov, use_container_width=True)
+        st.dataframe(gov.tail(5), use_container_width=True)
         status = str(latest_gov.get("status", ""))
         if status == "Champion":
             st.success("Champion: approved for live use under current governance rules.")
@@ -539,79 +554,86 @@ with tabs[10]:
             st.warning("Watch: useful signal, but not enough governance evidence for portfolio deployment.")
         else:
             st.warning("Research: exploratory model only.")
-    if not validation.empty:
-        st.subheader("Validation")
-        st.dataframe(validation, use_container_width=True)
-    if not monitoring.empty:
-        st.subheader("Monitoring")
-        st.dataframe(monitoring, use_container_width=True)
-    bt = safe_read_csv(paths["v90_backtest"])
-    conf = safe_read_csv(paths["v90_confidence"])
-    if not bt.empty:
-        st.subheader("V12 Portfolio Backtest Governance")
-        st.dataframe(bt, use_container_width=True)
-    if not conf.empty:
-        st.subheader("V12 Confidence Governance")
-        st.dataframe(conf, use_container_width=True)
-    readiness = safe_read_csv(paths["v105_readiness"])
-    cal_sum = safe_read_csv(paths["v10_cal_summary"])
-    cal_curve = safe_read_csv(paths["v10_calibration"])
-    if not readiness.empty:
-        st.subheader("V12 Institutional Readiness")
-        st.dataframe(readiness, use_container_width=True)
-    if not cal_sum.empty:
-        st.subheader("V12 Probability Calibration Summary")
-        st.dataframe(cal_sum, use_container_width=True)
+    else:
+        st.info("Run model first to generate model inventory.")
 
-        v115_retraining = safe_read_csv(paths.get("v115_retraining"))
-        v115_regprob = safe_read_csv(paths.get("v115_regime_probability"))
-        v115_sector = safe_read_csv(paths.get("v115_sector_strength"))
-        if not v115_retraining.empty:
-            st.subheader("V11.5 Adaptive Retraining")
-            st.dataframe(v115_retraining, use_container_width=True)
-        if not v115_regprob.empty:
-            st.subheader("V11.5 Regime Probability Forecast")
-            st.dataframe(v115_regprob, use_container_width=True)
-        if not v115_sector.empty:
-            st.subheader("V11.5 Sector Relative Strength")
-            st.dataframe(v115_sector, use_container_width=True)
-    v12_thresholds = safe_read_csv(paths.get("v12_thresholds"))
-    v12_meta = safe_read_csv(paths.get("v12_meta"))
-    v12_regime_diag = safe_read_csv(paths.get("v12_regime_diag"))
-    v12_bayesian = safe_read_csv(paths.get("v12_bayesian"))
-    v12_portfolio = safe_read_csv(paths.get("v12_portfolio"))
-    v12_retraining = safe_read_csv(paths.get("v12_retraining"))
-    if not v12_thresholds.empty:
-        st.subheader("V12 Dynamic Threshold Governance")
-        st.dataframe(v12_thresholds, use_container_width=True)
+    st.subheader("2. Validation")
+    show_df(validation.tail(1), "No validation data yet.")
+
+    st.subheader("3. Monitoring & Retraining")
+    monitor_blocks = []
+    if not monitoring.empty:
+        monitor_blocks.append(monitoring.tail(1))
+    if not v115_retraining.empty:
+        retr = v115_retraining.tail(1).copy()
+        retr.insert(0, "source", "V11.5 Adaptive Retraining")
+        monitor_blocks.append(retr)
     if not v12_retraining.empty:
-        st.subheader("V12 Auto Retraining Trigger")
-        st.dataframe(v12_retraining, use_container_width=True)
-    if not v12_regime_diag.empty:
-        st.subheader("V12 Regime-Specific Diagnostics")
-        st.dataframe(v12_regime_diag, use_container_width=True)
-    if not v12_bayesian.empty:
-        st.subheader("V12 Bayesian Ensemble")
-        st.dataframe(v12_bayesian.head(20), use_container_width=True)
-    if not v12_portfolio.empty:
-        st.subheader("V12 Confidence-Weighted Portfolio")
-        st.dataframe(v12_portfolio, use_container_width=True)
-    v13_timing = safe_read_csv(paths.get("v13_timing"))
-    v13_sector = safe_read_csv(paths.get("v13_sector"))
-    v13_stock = safe_read_csv(paths.get("v13_stock"))
-    v13_portfolio = safe_read_csv(paths.get("v13_portfolio"))
-    v13_attr = safe_read_csv(paths.get("v13_attribution"))
-    if not v13_timing.empty:
-        st.subheader("V13 Market Timing Governance")
-        st.dataframe(v13_timing, use_container_width=True)
-    if not v13_stock.empty:
-        st.subheader("V13 Stock Alpha Engine")
-        st.dataframe(v13_stock.head(20), use_container_width=True)
-    if not v13_portfolio.empty:
-        st.subheader("V13 Portfolio Construction")
-        st.dataframe(v13_portfolio, use_container_width=True)
-    if not v13_attr.empty:
-        st.subheader("V13 Performance Attribution")
-        st.dataframe(v13_attr, use_container_width=True)
+        retr2 = v12_retraining.tail(1).copy()
+        retr2.insert(0, "source", "V12 Auto Retraining")
+        monitor_blocks.append(retr2)
+    if monitor_blocks:
+        for block in monitor_blocks:
+            st.dataframe(block, use_container_width=True)
+    else:
+        st.info("No monitoring or retraining data yet.")
+
+    st.subheader("4. Portfolio Performance")
+    if not bt.empty:
+        row = bt.tail(1).iloc[0]
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("CAGR", f"{float(row.get('cagr', 0)):.2%}")
+        c2.metric("Sharpe", f"{float(row.get('sharpe', 0)):.2f}")
+        c3.metric("Sortino", f"{float(row.get('sortino', 0)):.2f}")
+        c4.metric("Max DD", f"{float(row.get('max_drawdown', 0)):.2%}")
+        c5.metric("Equity Final", f"{float(row.get('equity_final', 0)):.2f}")
+        st.dataframe(bt.tail(1), use_container_width=True)
+    else:
+        st.info("No portfolio backtest data yet.")
+
+    st.subheader("5. Confidence & Calibration")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Confidence**")
+        show_df(conf.tail(1), "No confidence data yet.")
+    with c2:
+        st.markdown("**Calibration**")
+        show_df(cal_sum.tail(1), "No calibration summary yet.")
     if not cal_curve.empty and {"avg_pred", "realized"}.issubset(cal_curve.columns):
         st.plotly_chart(px.line(cal_curve, x="avg_pred", y="realized", markers=True, title="Reliability Curve"), use_container_width=True)
+
+    st.subheader("6. Institutional Readiness & Deployment Recommendation")
+    if not readiness.empty:
+        r = readiness.tail(1).iloc[0]
+        score = float(r.get("institutional_readiness_score", r.get("readiness_score", 0)))
+        label = str(r.get("readiness_label", "N/A"))
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Readiness Score", f"{score:.1f}/100")
+        c2.metric("Readiness Label", label)
+        if score >= 80:
+            decision = "LIVE_APPROVED"
+        elif score >= 70:
+            decision = "PRODUCTION_CANDIDATE"
+        elif score >= 55:
+            decision = "PAPER_TRADING_ONLY"
+        else:
+            decision = "RESEARCH_ONLY"
+        c3.metric("Deployment Recommendation", decision)
+        st.dataframe(readiness.tail(1), use_container_width=True)
+    else:
+        st.info("No institutional readiness score yet.")
+
+    with st.expander("V13 Alpha Engine Outputs", expanded=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Market Timing Alpha**")
+            show_df(v13_timing.tail(1), "No V13 market timing output yet.")
+            st.markdown("**Sector Rotation Alpha**")
+            show_df(v13_sector.head(10), "No V13 sector output yet.")
+        with c2:
+            st.markdown("**Top Stock Alpha Ideas**")
+            show_df(v13_stock.head(20), "No V13 stock alpha output yet.")
+            st.markdown("**V13 Portfolio Construction**")
+            show_df(v13_portfolio, "No V13 portfolio output yet.")
+        st.markdown("**Performance Attribution**")
+        show_df(v13_attr, "No V13 performance attribution output yet.")
